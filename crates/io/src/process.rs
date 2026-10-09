@@ -39,7 +39,18 @@ impl OwnedChild {
         if self.scope_terminated {
             return Ok(());
         }
-        self.child.start_kill()?;
+        let result = self.child.start_kill();
+        #[cfg(unix)]
+        let result = result.or_else(|error| {
+            // Darwin may already have removed the exited leader from an empty
+            // group. Its unreaped PID is still reserved: ESRCH means no helpers.
+            if error.raw_os_error() == Some(rustix::io::Errno::SRCH.raw_os_error()) {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        });
+        result?;
         self.scope_terminated = true;
         Ok(())
     }
