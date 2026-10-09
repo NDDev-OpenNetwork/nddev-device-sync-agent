@@ -1,4 +1,4 @@
-use crate::{CancellationToken, IoError, NativeIo, transport, valid_timeout};
+use crate::{CancellationToken, IoError, ProcessIo, transport, valid_timeout};
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use std::{
     ffi::OsString,
@@ -44,7 +44,7 @@ impl Drop for OwnedChild {
     }
 }
 
-impl NativeIo {
+impl ProcessIo {
     /// Decode a complete native response only after its owning adapter's exit
     /// policy accepts it. Never treat a truncated or failed command as success.
     pub async fn json<T: serde::de::DeserializeOwned>(
@@ -210,6 +210,13 @@ fn native_environment() -> impl Iterator<Item = (&'static str, OsString)> {
         "ProgramFiles",
         "ProgramFiles(x86)",
         "ProgramW6432",
+        // These references select native owner state/preservation policy.
+        "RLDYOUR_UPDATER_CONFIG",
+        "RLDYOUR_UPDATER_STATE",
+        "GDS_ESTATE_ROOT",
+        "GDS_TRUST_POLICY_FILE",
+        "UV_CACHE_DIR",
+        "UV_LINK_MODE",
     ]
     .into_iter()
     .filter_map(|name| std::env::var_os(name).map(|value| (name, value)))

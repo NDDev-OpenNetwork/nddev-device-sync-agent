@@ -51,6 +51,7 @@ fn ignored_request(mode: &str) -> ProcessRequest {
 async fn preserves_exit_status_and_separate_unicode_streams() {
     let output = NativeIo::new(1)
         .unwrap()
+        .process_handle()
         .process(request("child_unicode"), CancellationToken::new())
         .await
         .unwrap();
@@ -69,7 +70,7 @@ async fn preserves_exit_status_and_separate_unicode_streams() {
 
 #[tokio::test]
 async fn bounds_aggregate_output_and_releases_admission() {
-    let io = NativeIo::new(1).unwrap();
+    let io = NativeIo::new(1).unwrap().process_handle();
     assert!(matches!(
         io.process(ignored_request("child_flood"), CancellationToken::new())
             .await,
@@ -86,7 +87,7 @@ async fn bounds_aggregate_output_and_releases_admission() {
 
 #[tokio::test]
 async fn rejects_overload_and_cancels_owned_process() {
-    let io = NativeIo::new(1).unwrap();
+    let io = NativeIo::new(1).unwrap().process_handle();
     let token = CancellationToken::new();
     let operation = io.process(ignored_request("child_wait"), token.clone());
     tokio::pin!(operation);
@@ -118,6 +119,7 @@ async fn deadline_covers_child_exit_and_pipe_drain() {
     assert!(matches!(
         NativeIo::new(1)
             .unwrap()
+            .process_handle()
             .process(request, CancellationToken::new())
             .await,
         Err(IoError::Timeout)

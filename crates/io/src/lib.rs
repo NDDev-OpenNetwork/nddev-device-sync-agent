@@ -70,6 +70,18 @@ pub struct NativeIo {
     permits: Arc<Semaphore>,
 }
 
+/// Local-socket authority only; cannot spawn a program.
+#[derive(Clone)]
+pub struct LocalIo {
+    permits: Arc<Semaphore>,
+}
+
+/// Native argv execution authority only; cannot connect to a local socket.
+#[derive(Clone)]
+pub struct ProcessIo {
+    permits: Arc<Semaphore>,
+}
+
 impl NativeIo {
     pub fn new(concurrency: usize) -> Result<Self, IoError> {
         if !(1..=16).contains(&concurrency) {
@@ -80,6 +92,19 @@ impl NativeIo {
         })
     }
 
+    pub fn local_handle(&self) -> LocalIo {
+        LocalIo {
+            permits: self.permits.clone(),
+        }
+    }
+    pub fn process_handle(&self) -> ProcessIo {
+        ProcessIo {
+            permits: self.permits.clone(),
+        }
+    }
+}
+
+impl LocalIo {
     pub async fn local<T, F>(
         &self,
         cancellation: CancellationToken,
