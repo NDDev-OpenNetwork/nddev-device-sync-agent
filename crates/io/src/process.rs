@@ -210,6 +210,13 @@ fn native_environment() -> impl Iterator<Item = (&'static str, OsString)> {
         "ProgramFiles",
         "ProgramFiles(x86)",
         "ProgramW6432",
+        // These references select native owner state/preservation policy.
+        "RLDYOUR_UPDATER_CONFIG",
+        "RLDYOUR_UPDATER_STATE",
+        "GDS_ESTATE_ROOT",
+        "GDS_TRUST_POLICY_FILE",
+        "UV_CACHE_DIR",
+        "UV_LINK_MODE",
     ]
     .into_iter()
     .filter_map(|name| std::env::var_os(name).map(|value| (name, value)))
