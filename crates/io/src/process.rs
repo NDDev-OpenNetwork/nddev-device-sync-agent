@@ -1,4 +1,4 @@
-use crate::{CancellationToken, IoError, NativeIo, transport, valid_timeout};
+use crate::{CancellationToken, IoError, ProcessIo, transport, valid_timeout};
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use std::{
     ffi::OsString,
@@ -44,7 +44,7 @@ impl Drop for OwnedChild {
     }
 }
 
-impl NativeIo {
+impl ProcessIo {
     /// Decode a complete native response only after its owning adapter's exit
     /// policy accepts it. Never treat a truncated or failed command as success.
     pub async fn json<T: serde::de::DeserializeOwned>(
