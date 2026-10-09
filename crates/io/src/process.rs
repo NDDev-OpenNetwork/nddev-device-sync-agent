@@ -96,16 +96,16 @@ impl ProcessIo {
                 event.name = "native.process.completed",
                 duration_ms = started.elapsed().as_millis() as u64,
                 outcome = if output.status.success() {
-                    "success"
+                    "ok"
                 } else {
-                    "provider_error"
+                    "error"
                 },
             ),
             Err(error) => tracing::warn!(
                 event.name = "native.process.failed",
                 duration_ms = started.elapsed().as_millis() as u64,
                 error.type = error.code(),
-                outcome = "failed",
+                outcome = "error",
             ),
         }
         result

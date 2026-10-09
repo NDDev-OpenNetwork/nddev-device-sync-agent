@@ -5,6 +5,51 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(unix)]
+#[tokio::test]
+async fn native_nowait_retains_the_exit_status_for_the_owned_reaper() {
+    use process_wrap::tokio::{CommandWrap, KillOnDrop, ProcessGroup};
+    use rustix::process::{Pid, WaitId, WaitIdOptions, waitid};
+    let mut changed =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::child()).unwrap();
+    let mut command = CommandWrap::with_new("/bin/sh", |command| {
+        command.args(["-c", "exit 0"]);
+    });
+    command.wrap(KillOnDrop).wrap(ProcessGroup::leader());
+    let mut child = command.spawn().unwrap();
+    let pid = Pid::from_raw(child.id().unwrap().try_into().unwrap()).unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if waitid(
+                WaitId::Pid(pid),
+                WaitIdOptions::EXITED | WaitIdOptions::NOWAIT | WaitIdOptions::NOHANG,
+            )
+            .expect("observe without reaping")
+            .is_some()
+            {
+                break;
+            }
+            changed.recv().await.unwrap();
+        }
+        if let Err(error) = child.start_kill() {
+            assert_eq!(
+                error.raw_os_error(),
+                Some(rustix::io::Errno::SRCH.raw_os_error()),
+                "terminate owned group"
+            );
+        }
+        assert!(
+            child
+                .wait()
+                .await
+                .expect("reap original exit status")
+                .success()
+        );
+    })
+    .await
+    .expect("native status notification deadline");
+}
+
 fn request(mode: &str) -> ProcessRequest {
     ProcessRequest {
         executable: std::env::current_exe().unwrap(),
