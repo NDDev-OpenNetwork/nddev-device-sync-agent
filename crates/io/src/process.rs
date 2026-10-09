@@ -31,15 +31,26 @@ pub struct ProcessOutput {
 
 struct OwnedChild {
     child: Box<dyn ChildWrapper>,
-    completed: bool,
+    scope_terminated: bool,
+}
+
+impl OwnedChild {
+    fn terminate_scope(&mut self) -> std::io::Result<()> {
+        if self.scope_terminated {
+            return Ok(());
+        }
+        self.child.start_kill()?;
+        self.scope_terminated = true;
+        Ok(())
+    }
 }
 
 impl Drop for OwnedChild {
     fn drop(&mut self) {
-        if !self.completed {
+        if !self.scope_terminated {
             // ProcessGroup/JobObject kills the owned group. Tokio kill-on-drop
             // also ensures the direct child is reaped if the future is aborted.
-            let _ = self.child.start_kill();
+            let _ = self.terminate_scope();
         }
     }
 }
@@ -131,9 +142,14 @@ impl ProcessIo {
         command.wrap(process_wrap::tokio::ProcessGroup::leader());
         #[cfg(windows)]
         command.wrap(process_wrap::tokio::JobObject);
+        // Register before spawn so a very short-lived child cannot exit between
+        // the status probe and subscribing to its SIGCHLD notification.
+        #[cfg(unix)]
+        let mut changed = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::child())
+            .map_err(transport)?;
         let mut owned = OwnedChild {
             child: command.spawn().map_err(transport)?,
-            completed: false,
+            scope_terminated: false,
         };
         let stdout = owned.child.stdout().take().ok_or(IoError::Transport)?;
         let stderr = owned.child.stderr().take().ok_or(IoError::Transport)?;
@@ -141,7 +157,11 @@ impl ProcessIo {
         let result = {
             let capture = async {
                 tokio::try_join!(
-                    async { owned.child.wait().await.map_err(transport) },
+                    async {
+                        #[cfg(unix)]
+                        wait_owned_scope(&mut owned, &mut changed).await?;
+                        owned.child.wait().await.map_err(transport)
+                    },
                     bounded_read(stdout, bytes.clone(), request.max_output_bytes),
                     bounded_read(stderr, bytes, request.max_output_bytes),
                 )
@@ -156,7 +176,8 @@ impl ProcessIo {
         };
         match result {
             Ok((status, stdout, stderr)) => {
-                owned.completed = true;
+                #[cfg(windows)]
+                owned.terminate_scope().map_err(transport)?;
                 Ok(ProcessOutput {
                     status,
                     stdout,
@@ -164,16 +185,43 @@ impl ProcessIo {
                 })
             }
             Err(error) => {
-                let _ = owned.child.start_kill();
+                let _ = owned.terminate_scope();
                 // Do not hang indefinitely while reaping an unresponsive child.
-                if matches!(
-                    tokio::time::timeout(Duration::from_secs(1), owned.child.wait()).await,
-                    Ok(Ok(_))
-                ) {
-                    owned.completed = true;
-                }
+                let _ = tokio::time::timeout(Duration::from_secs(1), owned.child.wait()).await;
                 Err(error)
             }
+        }
+    }
+}
+
+#[cfg(unix)]
+async fn wait_owned_scope(
+    owned: &mut OwnedChild,
+    changed: &mut tokio::signal::unix::Signal,
+) -> Result<(), IoError> {
+    use rustix::process::{Pid, WaitId, WaitIdOptions, waitid};
+    let pid = owned
+        .child
+        .id()
+        .and_then(|id| i32::try_from(id).ok())
+        .and_then(Pid::from_raw)
+        .ok_or(IoError::Transport)?;
+    loop {
+        match waitid(
+            WaitId::Pid(pid),
+            WaitIdOptions::EXITED | WaitIdOptions::NOWAIT | WaitIdOptions::NOHANG,
+        ) {
+            Ok(Some(_)) => {
+                // The unreaped leader reserves its PID/group identity. Kill
+                // remaining helpers before reaping, even when they closed all
+                // pipes and the leader exited successfully. No PID-reuse gap.
+                return owned.terminate_scope().map_err(transport);
+            }
+            Ok(None) => {
+                changed.recv().await.ok_or(IoError::Transport)?;
+            }
+            Err(error) if error == rustix::io::Errno::INTR => continue,
+            Err(_) => return Err(IoError::Transport),
         }
     }
 }
