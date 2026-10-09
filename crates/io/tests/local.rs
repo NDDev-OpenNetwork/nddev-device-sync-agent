@@ -37,7 +37,12 @@ impl Drop for LocalPeer {
 
 #[test]
 fn preserves_adjacent_frames_and_rejects_unterminated_payload() {
-    let peer = LocalPeer::new(|mut stream| stream.write_all(b"one\ntwo\npartial").unwrap());
+    let peer = LocalPeer::new(|mut stream| {
+        stream.write_all(b"one\ntwo\npartial").unwrap();
+        // Explicit EOF keeps this a framing test. A full peer close can be a
+        // reset on Darwin, whose correct outcome is a transport error instead.
+        stream.shutdown(std::net::Shutdown::Write).unwrap();
+    });
     let mut channel = LocalChannel::connect(
         &peer.0,
         Duration::from_secs(1),
