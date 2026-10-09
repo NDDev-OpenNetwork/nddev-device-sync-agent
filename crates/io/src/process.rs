@@ -32,6 +32,8 @@ pub struct ProcessOutput {
 struct OwnedChild {
     child: Box<dyn ChildWrapper>,
     scope_terminated: bool,
+    #[cfg(target_os = "macos")]
+    leader_exited: bool,
 }
 
 impl OwnedChild {
@@ -47,6 +49,13 @@ impl OwnedChild {
             if error.raw_os_error() == Some(rustix::io::Errno::SRCH.raw_os_error()) {
                 Ok(())
             } else {
+                #[cfg(target_os = "macos")]
+                if self.leader_exited
+                    && error.raw_os_error() == Some(rustix::io::Errno::PERM.raw_os_error())
+                    && self.child.id().is_some_and(macos_group_has_no_helpers)
+                {
+                    return Ok(());
+                }
                 Err(error)
             }
         });
@@ -161,6 +170,8 @@ impl ProcessIo {
         let mut owned = OwnedChild {
             child: command.spawn().map_err(transport)?,
             scope_terminated: false,
+            #[cfg(target_os = "macos")]
+            leader_exited: false,
         };
         let stdout = owned.child.stdout().take().ok_or(IoError::Transport)?;
         let stderr = owned.child.stderr().take().ok_or(IoError::Transport)?;
@@ -226,6 +237,10 @@ async fn wait_owned_scope(
                 // The unreaped leader reserves its PID/group identity. Kill
                 // remaining helpers before reaping, even when they closed all
                 // pipes and the leader exited successfully. No PID-reuse gap.
+                #[cfg(target_os = "macos")]
+                {
+                    owned.leader_exited = true;
+                }
                 return owned.terminate_scope().map_err(transport);
             }
             Ok(None) => {
@@ -235,6 +250,20 @@ async fn wait_owned_scope(
             Err(_) => return Err(IoError::Transport),
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_group_has_no_helpers(leader: u32) -> bool {
+    // XNU's group signal path excludes zombies and returns EPERM when it found
+    // no signalable process. Do not hide a real permission denial: inspect only
+    // this reserved group and accept solely the already-exited leader/empty set.
+    // libproc distinguishes an empty result using errno; discard the preceding
+    // killpg errno before querying. No command lines or unrelated inventory.
+    errno::set_errno(errno::Errno(0));
+    libproc::processes::pids_by_type(libproc::processes::ProcFilter::ByProgramGroup {
+        pgrpid: leader,
+    })
+    .is_ok_and(|pids| pids.iter().all(|pid| *pid == 0 || *pid == leader))
 }
 
 /// Native user/session discovery only. Do not inherit provider API tokens,

@@ -32,11 +32,21 @@ async fn native_nowait_retains_the_exit_status_for_the_owned_reaper() {
             changed.recv().await.unwrap();
         }
         if let Err(error) = child.start_kill() {
-            assert_eq!(
-                error.raw_os_error(),
-                Some(rustix::io::Errno::SRCH.raw_os_error()),
-                "terminate owned group"
-            );
+            let missing = error.raw_os_error() == Some(rustix::io::Errno::SRCH.raw_os_error());
+            #[cfg(target_os = "macos")]
+            let missing = missing || {
+                errno::set_errno(errno::Errno(0));
+                error.raw_os_error() == Some(rustix::io::Errno::PERM.raw_os_error())
+                    && libproc::processes::pids_by_type(
+                        libproc::processes::ProcFilter::ByProgramGroup {
+                            pgrpid: pid.as_raw_pid() as u32,
+                        },
+                    )
+                    .unwrap()
+                    .iter()
+                    .all(|id| *id == 0 || *id == pid.as_raw_pid() as u32)
+            };
+            assert!(missing, "terminate owned group: {:?}", error.raw_os_error());
         }
         assert!(
             child
