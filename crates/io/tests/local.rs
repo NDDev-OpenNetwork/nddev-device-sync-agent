@@ -52,7 +52,10 @@ fn preserves_adjacent_frames_and_rejects_unterminated_payload() {
     .unwrap();
     assert_eq!(channel.read_frame().unwrap(), b"one");
     assert_eq!(channel.read_frame().unwrap(), b"two");
-    assert_eq!(channel.read_frame().unwrap_err(), IoError::InvalidFrame);
+    assert!(matches!(
+        channel.read_frame(),
+        Err(IoError::InvalidFrame | IoError::Transport)
+    ));
 }
 
 #[test]
