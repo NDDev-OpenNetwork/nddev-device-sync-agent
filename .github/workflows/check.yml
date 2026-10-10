@@ -30,3 +30,26 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Native transport tests
         run: cargo test --locked --workspace
+      - name: Dependency policy and advisory checks
+        if: runner.os == 'Linux'
+        run: |
+          cargo install --locked --version 0.20.2 cargo-deny
+          cargo install --locked --version 0.22.2 cargo-audit
+          cargo deny check
+          cargo audit
+      - name: Fetch the canonical sysinfo provider
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cargo metadata --locked --format-version 1 > "$RUNNER_TEMP/nds-metadata.json"
+          python3 - "$RUNNER_TEMP/nds-metadata.json" "$RUNNER_TEMP/native-provider" <<'PY'
+          import json, subprocess, sys
+          from pathlib import Path
+          packages = json.loads(Path(sys.argv[1]).read_text())["packages"]
+          provider = next(p for p in packages if p["name"] == "nddev-device-sync-sysinfo")
+          lock = Path(provider["manifest_path"]).parent / "provider.lock.json"
+          subprocess.run([sys.executable, "scripts/fetch-provider.py", str(lock), sys.argv[2]], check=True)
+          PY
+      - name: Real assembled agent acceptance
+        if: runner.os == 'Linux'
+        run: python3 scripts/check-agent.py
