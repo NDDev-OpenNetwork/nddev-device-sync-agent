@@ -8,3 +8,4 @@ standards_lock: standarts.lock
 platforms: [linux, macos, windows]
 packages:
   adapter-io: crates/io
+  agent: crates/agent
