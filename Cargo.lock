@@ -671,7 +671,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-domain"
 version = "0.0.2"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-core?rev=c20834d557fdc875b47bf8c97e221f6a119b62bd#c20834d557fdc875b47bf8c97e221f6a119b62bd"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-core?rev=5fc6c3a6cc450880b3a313b7552d411a11b48134#5fc6c3a6cc450880b3a313b7552d411a11b48134"
 dependencies = [
  "serde",
  "thiserror",
@@ -709,8 +709,8 @@ dependencies = [
 
 [[package]]
 name = "nddev-device-sync-telemetry"
-version = "0.0.1-alpha.2"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-observability?rev=7ae68ea764b3f0e639d551b059eb0651a50b5edd#7ae68ea764b3f0e639d551b059eb0651a50b5edd"
+version = "0.0.1-alpha.3"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-observability?rev=863a0caad5a06a450a0d99a23675bfb5b5959b2e#863a0caad5a06a450a0d99a23675bfb5b5959b2e"
 dependencies = [
  "android_log-sys",
  "chrono",
