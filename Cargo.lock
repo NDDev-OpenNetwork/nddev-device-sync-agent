@@ -670,8 +670,8 @@ dependencies = [
 
 [[package]]
 name = "nddev-device-sync-domain"
-version = "0.0.1"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-core?rev=9bc379e0a0d921b8478fb2e736d97280ce3dc0aa#9bc379e0a0d921b8478fb2e736d97280ce3dc0aa"
+version = "0.0.2"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-core?rev=c20834d557fdc875b47bf8c97e221f6a119b62bd#c20834d557fdc875b47bf8c97e221f6a119b62bd"
 dependencies = [
  "serde",
  "thiserror",
