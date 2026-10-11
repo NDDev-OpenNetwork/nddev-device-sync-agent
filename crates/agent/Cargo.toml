@@ -9,7 +9,7 @@ repository.workspace = true
 
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 nddev-device-sync-adapter-io = { version = "=0.0.1-alpha.1", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-agent", rev = "341644980976a08825b194f147b7534321325785" }
-nddev-device-sync-domain = { version = "=0.0.3", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-core", rev = "e87368c53bd524caeabc1e14743c96fcfd87da77" }
+nddev-device-sync-domain = { version = "=0.0.4", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-core", rev = "3e5b1db049c47799123847c9831f025cb226c69c" }
 nddev-device-sync-telemetry = { version = "=0.0.1-alpha.3", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-observability", rev = "863a0caad5a06a450a0d99a23675bfb5b5959b2e" }
 serde_json = "1"
 tracing = "0.1"
