@@ -10,7 +10,7 @@ repository.workspace = true
 [dependencies]
 nddev-device-sync-adapter-io = { path = "../io" }
 nddev-device-sync-accounts = { git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-accounts", rev = "65ad593d6116a992934d1b06f3874fadfb89c37b" }
-nddev-device-sync-vault = { git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-vault", rev = "3b3561140b231b4b72e86111e4accc9ad9401007" }
+nddev-device-sync-vault = { git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-vault", rev = "1b96acda75c1c0f25abf5de7aa9a04a85cdb1782" }
 serde_json = "1"
 tracing = "0.1"
 nddev-device-sync-telemetry = { git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-observability", rev = "863a0caad5a06a450a0d99a23675bfb5b5959b2e" }
