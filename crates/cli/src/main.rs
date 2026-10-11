@@ -1,12 +1,14 @@
 //! Agent point-of-use interface. Session, vault keys and provider credentials stay
 //! native; child output is discarded and never forwarded to chat or telemetry.
-use nddev_device_sync_accounts::IdentityClient;
+use nddev_device_sync_accounts::{IdentityClient, telemetry::Delivery};
 use nddev_device_sync_adapter_io::{
     CancellationToken, CredentialEnvironment, NativeIo, ProcessInput, ProcessRequest,
 };
+use nddev_device_sync_telemetry::client_traces::ClientTraces;
 use nddev_device_sync_vault::VaultClient;
 use serde_json::{Value, json};
 use std::{path::PathBuf, sync::Arc, time::Duration};
+use tracing::Instrument;
 use zeroize::Zeroizing;
 
 fn data_directory() -> Result<PathBuf, &'static str> {
@@ -42,11 +44,12 @@ fn executable(name: &str) -> Result<PathBuf, &'static str> {
     }
     Err("provider_unavailable")
 }
-async fn operation(args: &[String]) -> Result<Value, &'static str> {
+async fn operation(
+    args: &[String],
+    export_identity: &mut Option<Arc<IdentityClient>>,
+) -> Result<Value, &'static str> {
     let [flag, endpoint, scope, command, remaining @ ..] = args else {
-        return Err(
-            "usage: nds-agent --server URL vault list [AFTER_REF] | use RECORD_REF github|cloudflare|digitalocean",
-        );
+        return Err("invalid_arguments");
     };
     if flag != "--server"
         || scope != "vault"
@@ -70,6 +73,7 @@ async fn operation(args: &[String]) -> Result<Value, &'static str> {
         .prepare_device("NDS agent".into())
         .await
         .map_err(|_| "device_unavailable")?;
+    *export_identity = Some(identity.clone());
     let vault = VaultClient::new(identity, data_directory()?)
         .await
         .map_err(|_| "vault_unavailable")?;
@@ -92,24 +96,12 @@ async fn operation(args: &[String]) -> Result<Value, &'static str> {
     match (command.as_str(), remaining) {
         ("list", [] | [_]) => {
             let after = remaining.first().map_or("", String::as_str);
-            let records = vault.records().await.map_err(|_| "vault_unavailable")?;
-            let mut records = records
-                .into_iter()
-                .filter(|record| record.id.as_str() > after)
-                .take(51)
-                .collect::<Vec<_>>();
-            let has_more = records.len() > 50;
-            records.truncate(50);
-            let next = if has_more {
-                records
-                    .last()
-                    .map(|record| record.id.as_str())
-                    .unwrap_or("")
-            } else {
-                ""
-            };
+            let page = vault
+                .records(after.to_owned())
+                .await
+                .map_err(|_| "vault_unavailable")?;
             Ok(
-                json!({"operation":"vault.list","records":records.iter().map(|record|json!({"ref":record.id,"title":record.title,"revision":record.revision,"conflicted":record.conflicted})).collect::<Vec<_>>(),"next_ref":next}),
+                json!({"operation":"vault.list","records":page.items.iter().map(|record|json!({"ref":record.id,"title":record.title,"revision":record.revision,"observed_seq":record.observed_seq,"deleted":record.deleted,"conflicted":record.conflicted})).collect::<Vec<_>>(),"next_ref":if page.has_more {page.next_after} else {String::new()}}),
             )
         }
         ("use", [record, provider]) => {
@@ -167,7 +159,7 @@ async fn operation(args: &[String]) -> Result<Value, &'static str> {
 }
 #[tokio::main]
 async fn main() {
-    let mut logger = nddev_device_sync_telemetry::install(nddev_device_sync_telemetry::Config {
+    let config = nddev_device_sync_telemetry::Config {
         service: "nddev-device-sync-agent".into(),
         version: env!("CARGO_PKG_VERSION").into(),
         repository: "NDDev-OpenNetwork/nddev-device-sync-agent".into(),
@@ -182,24 +174,66 @@ async fn main() {
         ],
         default_module: "agent".into(),
         debug: None,
-    })
-    .ok();
+    };
+    let traces = ClientTraces::new(&config).ok();
+    let mut logger = traces.as_ref().and_then(|traces| {
+        nddev_device_sync_telemetry::install_with_tracer_to(
+            config,
+            traces.tracer(),
+            nddev_device_sync_telemetry::LocalOutput::Stderr,
+        )
+        .ok()
+    });
+    let mut feeds = logger
+        .as_ref()
+        .zip(traces.as_ref())
+        .and_then(|(logger, traces)| {
+            Some((logger.control.subscribe().ok()?, traces.subscribe().ok()?))
+        });
+    if feeds.is_none() {
+        println!("{}", json!({"error":"telemetry_unavailable"}));
+        std::process::exit(2);
+    }
+    let mut export_identity = None;
     let arguments = std::env::args().skip(1).take(8).collect::<Vec<_>>();
-    let result = tokio::time::timeout(Duration::from_secs(120), operation(&arguments))
-        .await
-        .unwrap_or(Err("operation_timeout"));
-    match result {
-        Ok(value) => {
-            tracing::info!(event.name = "agent.operation.completed", outcome = "ok");
-            println!("{value}");
-        }
-        Err(error) => {
-            tracing::warn!(event.name="agent.operation.failed",error.type="agent_operation",outcome="error");
-            println!("{}", json!({"error":error}));
-            if let Some(logger) = &mut logger {
-                logger.shutdown();
-            }
-            std::process::exit(2);
-        }
+    let span = nddev_device_sync_telemetry::operation_span("agent", "process")
+        .expect("static agent scope");
+    let result = tokio::time::timeout(
+        Duration::from_secs(120),
+        operation(&arguments, &mut export_identity).instrument(span.clone()),
+    )
+    .await
+    .unwrap_or(Err("operation_timeout"));
+    span.in_scope(|| match &result {
+        Ok(_) => tracing::info!(event.name = "agent.operation.completed", outcome = "ok"),
+        Err(_) => tracing::warn!(event.name = "agent.operation.failed", error.type = "agent_operation", outcome = "error"),
+    });
+    drop(span);
+    // Flush after the foreground capability completes. Background telemetry
+    // must not compete with its native credential-store admission budget.
+    let delivery = export_identity
+        .zip(feeds.take())
+        .map(|(identity, (events, traces))| Delivery::start(identity, events, traces, true));
+    let observed = match &delivery {
+        Some(delivery) => Some(delivery.flush().await),
+        None => None,
+    };
+    let success = result.is_ok();
+    let mut output = result.unwrap_or_else(|error| json!({"error":error}));
+    output["diagnostics"] = observed.map_or_else(|| json!({"export":"unavailable"}), |state| json!({
+        "export":match state.policy {nddev_device_sync_accounts::telemetry::ExportPolicy::Unknown=>"unknown",nddev_device_sync_accounts::telemetry::ExportPolicy::Enabled=>"enabled",nddev_device_sync_accounts::telemetry::ExportPolicy::Disabled=>"disabled"},
+        "acknowledged_events":state.delivered,"acknowledged_spans":state.spans_delivered,
+        "undelivered":state.pending+state.spans_pending,"dropped":state.dropped+state.spans_dropped
+    }));
+    drop(delivery);
+    if let Some(traces) = traces {
+        traces.shutdown();
+    }
+    if let Some(logger) = &mut logger {
+        logger.shutdown();
+    }
+    println!("{output}");
+    if !success {
+        std::process::exit(2);
     }
 }

@@ -1,19 +1,21 @@
-//! Real Secret Service/PostgreSQL/GitHub acceptance; no provider-success stub.
+//! Real native vault and official GitHub rejection; no provider-success stub.
+//! A positive check requires an explicitly supplied isolated test credential.
+#![cfg(target_os = "linux")]
 use nddev_device_sync_accounts::IdentityClient;
-use nddev_device_sync_adapter_io::{CancellationToken, NativeIo, ProcessRequest};
+use nddev_device_sync_adapter_io::ProcessRequest;
 use nddev_device_sync_vault::VaultClient;
 use serde_json::Value;
 use std::{sync::Arc, time::Duration};
 use zeroize::Zeroizing;
 #[tokio::test]
-#[ignore = "requires an owned fixture and already-authorized official GitHub CLI"]
+#[ignore = "requires an owned fixture and official GitHub CLI; optional isolated test credential"]
 async fn actual_native_vault_reference_drives_official_github_cli() {
     let data: Value = serde_json::from_slice(
         &std::fs::read(std::env::var("NDS_FIXTURE_RECEIPT").unwrap()).unwrap(),
     )
     .unwrap();
     let endpoint = data["base_url"].as_str().unwrap();
-    assert!(endpoint.starts_with("http://localhost:"));
+    assert!(endpoint.starts_with("http://localhost:") || endpoint.starts_with("http://127.0.0.1:"));
     let identity = Arc::new(IdentityClient::new(endpoint).unwrap());
     identity.refresh().await.unwrap();
     let mailbox = data["mailpit_url"].as_str().unwrap();
@@ -88,37 +90,24 @@ async fn actual_native_vault_reference_drives_official_github_cli() {
         .await
         .unwrap();
     vault.synchronize().await.unwrap();
-    let io = NativeIo::new(1).unwrap().process_handle();
-    let gh = std::env::var_os("NDS_TEST_GH")
-        .map(std::path::PathBuf::from)
-        .expect("absolute official gh executable required");
-    let output = io
-        .process(
-            ProcessRequest {
-                executable: gh,
-                arguments: ["auth", "token", "--hostname", "github.com"]
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
-                directory: None,
-                timeout: Duration::from_secs(10),
-                max_output_bytes: 16_384,
-            },
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap();
-    assert!(output.status.success());
-    let secret = Zeroizing::new(
-        String::from_utf8(output.stdout)
-            .unwrap()
-            .trim_end()
-            .to_owned(),
-    );
+    let positive = std::env::var_os("NDS_TEST_ISOLATED_GITHUB_TOKEN_FILE");
+    let secret = Zeroizing::new(if let Some(path) = &positive {
+        let path = std::path::PathBuf::from(path);
+        assert!(path.is_absolute());
+        let file = std::fs::File::open(path).unwrap();
+        use std::io::Read;
+        let mut value = String::new();
+        file.take(16_385).read_to_string(&mut value).unwrap();
+        assert!(value.len() <= 16_384);
+        value.trim_end().to_owned()
+    } else {
+        format!("nds-invalid-acceptance-{}", std::process::id())
+    });
     assert!(!secret.is_empty());
     vault
         .save_record(
             None,
+            0,
             "Owned native credential consumer".into(),
             String::new(),
             secret.clone(),
@@ -127,9 +116,10 @@ async fn actual_native_vault_reference_drives_official_github_cli() {
         .unwrap();
     vault.synchronize().await.unwrap();
     let reference = vault
-        .records()
+        .records(String::new())
         .await
         .unwrap()
+        .items
         .into_iter()
         .find(|record| record.title == "Owned native credential consumer" && !record.conflicted)
         .unwrap()
@@ -157,21 +147,14 @@ async fn actual_native_vault_reference_drives_official_github_cli() {
     .await
     .unwrap()
     .unwrap();
-    let classes = output
-        .stdout
-        .split(|byte| *byte == b'\n')
-        .filter_map(|line| serde_json::from_slice::<Value>(line).ok())
-        .filter_map(|value| value["error"].as_str().map(str::to_owned))
-        .filter(|value| {
-            value
-                .bytes()
-                .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
-        })
-        .collect::<Vec<_>>();
-    assert!(
-        output.status.success(),
-        "Native CLI error classes: {classes:?}"
-    );
+    let result: Value = serde_json::from_slice(&output.stdout)
+        .expect("CLI stdout must contain exactly one JSON result");
+    assert_eq!(output.status.success(), positive.is_some());
+    if positive.is_some() {
+        assert_eq!(result["verified"], true);
+    } else {
+        assert_eq!(result["error"], "provider_credential_rejected");
+    }
     assert!(
         !output
             .stdout
@@ -183,15 +166,6 @@ async fn actual_native_vault_reference_drives_official_github_cli() {
             .stderr
             .windows(secret.len())
             .any(|value| value == secret.as_bytes())
-    );
-    assert!(
-        output
-            .stdout
-            .split(|byte| *byte == b'\n')
-            .filter_map(|line| serde_json::from_slice::<Value>(line).ok())
-            .any(|value| value["operation"] == "vault.use"
-                && value["provider"] == "github"
-                && value["verified"] == true)
     );
     credentials.delete().await.unwrap();
     identity.logout().await.unwrap();
