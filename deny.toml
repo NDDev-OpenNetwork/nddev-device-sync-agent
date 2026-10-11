@@ -2,7 +2,7 @@
 yanked = "deny"
 
 [licenses]
-allow = ["AGPL-3.0-only", "Apache-2.0", "BSD-3-Clause", "ISC", "MIT", "MIT-0", "Unicode-3.0", "Zlib"]
+allow = ["AGPL-3.0-only", "Apache-2.0", "BSD-3-Clause", "BSL-1.0", "CDLA-Permissive-2.0", "ISC", "MIT", "MIT-0", "Unicode-3.0", "Zlib"]
 confidence-threshold = 0.95
 
 [bans]
@@ -13,6 +13,9 @@ wildcards = "deny"
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-git = [
+    "https://github.com/NDDev-OpenNetwork/nddev-device-sync-accounts",
+    "https://github.com/NDDev-OpenNetwork/nddev-device-sync-vault",
+    "https://github.com/NDDev-OpenNetwork/nddev-device-sync-protocol.git",
     "https://github.com/NDDev-OpenNetwork/nddev-device-sync-agent",
     "https://github.com/NDDev-OpenNetwork/nddev-device-sync-cleaner",
     "https://github.com/NDDev-OpenNetwork/nddev-device-sync-clipboard",
