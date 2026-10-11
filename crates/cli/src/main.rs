@@ -195,15 +195,22 @@ async fn main() {
         std::process::exit(2);
     }
     let mut export_identity = None;
-    let arguments = std::env::args().skip(1).take(8).collect::<Vec<_>>();
+    let arguments = std::env::args_os()
+        .skip(1)
+        .take(8)
+        .map(|value| value.into_string().map_err(|_| "invalid_arguments"))
+        .collect::<Result<Vec<_>, _>>();
     let span = nddev_device_sync_telemetry::operation_span("agent", "process")
         .expect("static agent scope");
-    let result = tokio::time::timeout(
-        Duration::from_secs(120),
-        operation(&arguments, &mut export_identity).instrument(span.clone()),
-    )
-    .await
-    .unwrap_or(Err("operation_timeout"));
+    let result = match arguments {
+        Ok(arguments) => tokio::time::timeout(
+            Duration::from_secs(120),
+            operation(&arguments, &mut export_identity).instrument(span.clone()),
+        )
+        .await
+        .unwrap_or(Err("operation_timeout")),
+        Err(error) => Err(error),
+    };
     span.in_scope(|| match &result {
         Ok(_) => tracing::info!(event.name = "agent.operation.completed", outcome = "ok"),
         Err(_) => tracing::warn!(event.name = "agent.operation.failed", error.type = "agent_operation", outcome = "error"),
