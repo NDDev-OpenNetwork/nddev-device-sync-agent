@@ -1,0 +1,239 @@
+//! Agent point-of-use interface. Session, vault keys and provider credentials stay
+//! native; child output is discarded and never forwarded to chat or telemetry.
+use nddev_device_sync_accounts::{IdentityClient, telemetry::Delivery};
+use nddev_device_sync_adapter_io::{
+    CancellationToken, CredentialEnvironment, NativeIo, ProcessInput, ProcessRequest,
+};
+use nddev_device_sync_telemetry::client_traces::ClientTraces;
+use nddev_device_sync_vault::VaultClient;
+use serde_json::{Value, json};
+use std::{path::PathBuf, sync::Arc, time::Duration};
+use tracing::Instrument;
+use zeroize::Zeroizing;
+
+fn data_directory() -> Result<PathBuf, &'static str> {
+    #[cfg(target_os = "linux")]
+    let root = std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")));
+    #[cfg(target_os = "macos")]
+    let root = std::env::var_os("HOME")
+        .map(|home| PathBuf::from(home).join("Library/Application Support"));
+    #[cfg(target_os = "windows")]
+    let root = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    let root = root.ok_or("native_directory_unavailable")?;
+    if !root.is_absolute() {
+        return Err("invalid_native_directory");
+    }
+    Ok(root.join("nddev-device-sync"))
+}
+fn executable(name: &str) -> Result<PathBuf, &'static str> {
+    let paths = std::env::var_os("PATH").ok_or("provider_unavailable")?;
+    #[cfg(target_os = "windows")]
+    let name = format!("{name}.exe");
+    #[cfg(target_os = "windows")]
+    let name = name.as_str();
+    for directory in std::env::split_paths(&paths)
+        .take(64)
+        .filter(|directory| directory.is_absolute())
+    {
+        let candidate = directory.join(name);
+        if candidate.is_file() {
+            return std::fs::canonicalize(candidate).map_err(|_| "provider_unavailable");
+        }
+    }
+    Err("provider_unavailable")
+}
+async fn operation(
+    args: &[String],
+    export_identity: &mut Option<Arc<IdentityClient>>,
+) -> Result<Value, &'static str> {
+    let [flag, endpoint, scope, command, remaining @ ..] = args else {
+        return Err("invalid_arguments");
+    };
+    if flag != "--server"
+        || scope != "vault"
+        || args.len() > 6
+        || args.iter().any(|value| value.len() > 2048)
+    {
+        return Err("invalid_arguments");
+    }
+    if command != "list" && command != "use" {
+        return Err("unsupported_operation");
+    }
+    let identity = Arc::new(IdentityClient::new(endpoint).map_err(|_| "invalid_server")?);
+    let view = identity
+        .refresh()
+        .await
+        .map_err(|_| "identity_unavailable")?;
+    if !view.authenticated || !view.session_verified {
+        return Err("sign_in_required");
+    }
+    identity
+        .prepare_device("NDS agent".into())
+        .await
+        .map_err(|_| "device_unavailable")?;
+    *export_identity = Some(identity.clone());
+    let vault = VaultClient::new(identity, data_directory()?)
+        .await
+        .map_err(|_| "vault_unavailable")?;
+    let mut current = false;
+    for _ in 0..16 {
+        match vault.synchronize().await {
+            Ok(view) if !view.catching_up => {
+                current = true;
+                break;
+            }
+            Ok(_) | Err(nddev_device_sync_vault::Error::Busy) => {
+                tokio::time::sleep(Duration::from_millis(100)).await
+            }
+            Err(_) => return Err("vault_unavailable"),
+        }
+    }
+    if !current {
+        return Err("replica_catching_up");
+    }
+    match (command.as_str(), remaining) {
+        ("list", [] | [_]) => {
+            let after = remaining.first().map_or("", String::as_str);
+            let page = vault
+                .records(after.to_owned())
+                .await
+                .map_err(|_| "vault_unavailable")?;
+            Ok(
+                json!({"operation":"vault.list","records":page.items.iter().map(|record|json!({"ref":record.id,"title":record.title,"revision":record.revision,"observed_seq":record.observed_seq,"deleted":record.deleted,"conflicted":record.conflicted})).collect::<Vec<_>>(),"next_ref":if page.has_more {page.next_after} else {String::new()}}),
+            )
+        }
+        ("use", [record, provider]) => {
+            let (name, arguments, environment) = match provider.as_str() {
+                "github" => (
+                    "gh",
+                    vec!["api", "user", "--hostname", "github.com"],
+                    CredentialEnvironment::GitHub,
+                ),
+                "cloudflare" => (
+                    "wrangler",
+                    vec!["whoami", "--json"],
+                    CredentialEnvironment::Cloudflare,
+                ),
+                "digitalocean" => (
+                    "doctl",
+                    vec!["account", "get", "--output", "json"],
+                    CredentialEnvironment::DigitalOcean,
+                ),
+                _ => return Err("unsupported_provider"),
+            };
+            let token = vault
+                .native_secret(record.clone())
+                .await
+                .map_err(|_| "secret_reference_unavailable")?;
+            let output = NativeIo::new(1)
+                .map_err(|_| "native_io_unavailable")?
+                .process_handle()
+                .process_input(
+                    ProcessRequest {
+                        executable: executable(name)?,
+                        arguments: arguments.into_iter().map(Into::into).collect(),
+                        directory: None,
+                        timeout: Duration::from_secs(20),
+                        max_output_bytes: 65_536,
+                    },
+                    ProcessInput {
+                        stdin: Zeroizing::new(Vec::new()),
+                        credential: Some((environment, token)),
+                    },
+                    CancellationToken::new(),
+                )
+                .await
+                .map_err(|_| "provider_unavailable")?;
+            let success = output.status.success();
+            let _stdout = Zeroizing::new(output.stdout);
+            let _stderr = Zeroizing::new(output.stderr);
+            if !success {
+                return Err("provider_credential_rejected");
+            }
+            Ok(json!({"operation":"vault.use","provider":provider,"verified":true}))
+        }
+        _ => Err("invalid_arguments"),
+    }
+}
+#[tokio::main]
+async fn main() {
+    let config = nddev_device_sync_telemetry::Config {
+        service: "nddev-device-sync-agent".into(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        repository: "NDDev-OpenNetwork/nddev-device-sync-agent".into(),
+        commit: option_env!("NDS_SOURCE_COMMIT").unwrap_or("unknown").into(),
+        channel: "alpha".into(),
+        standards: "unreleased".into(),
+        environment: "client".into(),
+        target_prefixes: vec![
+            "nds_agent".into(),
+            "nds_accounts".into(),
+            "nddev_device_sync_adapter_io".into(),
+        ],
+        default_module: "agent".into(),
+        debug: None,
+    };
+    let traces = ClientTraces::new(&config).ok();
+    let mut logger = traces.as_ref().and_then(|traces| {
+        nddev_device_sync_telemetry::install_with_tracer_to(
+            config,
+            traces.tracer(),
+            nddev_device_sync_telemetry::LocalOutput::Stderr,
+        )
+        .ok()
+    });
+    let mut feeds = logger
+        .as_ref()
+        .zip(traces.as_ref())
+        .and_then(|(logger, traces)| {
+            Some((logger.control.subscribe().ok()?, traces.subscribe().ok()?))
+        });
+    if feeds.is_none() {
+        println!("{}", json!({"error":"telemetry_unavailable"}));
+        std::process::exit(2);
+    }
+    let mut export_identity = None;
+    let arguments = std::env::args().skip(1).take(8).collect::<Vec<_>>();
+    let span = nddev_device_sync_telemetry::operation_span("agent", "process")
+        .expect("static agent scope");
+    let result = tokio::time::timeout(
+        Duration::from_secs(120),
+        operation(&arguments, &mut export_identity).instrument(span.clone()),
+    )
+    .await
+    .unwrap_or(Err("operation_timeout"));
+    span.in_scope(|| match &result {
+        Ok(_) => tracing::info!(event.name = "agent.operation.completed", outcome = "ok"),
+        Err(_) => tracing::warn!(event.name = "agent.operation.failed", error.type = "agent_operation", outcome = "error"),
+    });
+    drop(span);
+    // Flush after the foreground capability completes. Background telemetry
+    // must not compete with its native credential-store admission budget.
+    let delivery = export_identity
+        .zip(feeds.take())
+        .map(|(identity, (events, traces))| Delivery::start(identity, events, traces, true));
+    let observed = match &delivery {
+        Some(delivery) => Some(delivery.flush().await),
+        None => None,
+    };
+    let success = result.is_ok();
+    let mut output = result.unwrap_or_else(|error| json!({"error":error}));
+    output["diagnostics"] = observed.map_or_else(|| json!({"export":"unavailable"}), |state| json!({
+        "export":match state.policy {nddev_device_sync_accounts::telemetry::ExportPolicy::Unknown=>"unknown",nddev_device_sync_accounts::telemetry::ExportPolicy::Enabled=>"enabled",nddev_device_sync_accounts::telemetry::ExportPolicy::Disabled=>"disabled"},
+        "acknowledged_events":state.delivered,"acknowledged_spans":state.spans_delivered,
+        "undelivered":state.pending+state.spans_pending,"dropped":state.dropped+state.spans_dropped
+    }));
+    drop(delivery);
+    if let Some(traces) = traces {
+        traces.shutdown();
+    }
+    if let Some(logger) = &mut logger {
+        logger.shutdown();
+    }
+    println!("{output}");
+    if !success {
+        std::process::exit(2);
+    }
+}

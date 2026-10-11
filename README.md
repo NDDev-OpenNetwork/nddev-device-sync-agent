@@ -25,3 +25,21 @@ provider. Dependencies use immutable Git revisions.
 
 This library has no standalone background daemon, remote-command endpoint,
 maintenance mutation, backup/recovery or private estate configuration.
+
+`nds-agent --server <origin> vault list [after_ref]` returns bounded metadata and
+secret references. `vault use <ref> github|cloudflare|digitalocean` consumes the
+secret natively for the official provider identity check; raw provider output
+and credentials are never returned. Sign in through NDS first. The CLI uses the
+same native session/device/vault stores and reconciles the server replica before
+use; conflicts, revocation and incomplete catch-up deny secret consumption.
+
+The CLI reserves stdout for one JSON operation result; the shared bounded SDK
+writes redacted diagnostics to stderr. It uses the same accounts sender for
+signed events and actual native spans, reporting transport acknowledgements,
+operator policy and undelivered/dropped records separately. Vault list cursors
+come from the native paginated read model, including tombstones/conflicts.
+
+Provider acceptance never extracts a working CLI account token into fixtures.
+The default real GitHub check uses a generated invalid value and verifies denial
+without secret/output leakage. A successful provider check requires an explicitly
+supplied isolated test account credential via `NDS_TEST_ISOLATED_GITHUB_TOKEN_FILE`.

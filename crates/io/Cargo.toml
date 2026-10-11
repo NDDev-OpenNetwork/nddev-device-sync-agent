@@ -8,6 +8,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+zeroize = "1.8"
 process-wrap = { version = "10.0.1", default-features = false, features = ["tokio1", "process-group", "job-object", "creation-flags", "kill-on-drop"] }
 socket2 = "0.6.5"
 serde = "1"

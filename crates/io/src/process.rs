@@ -10,7 +10,8 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use zeroize::Zeroizing;
 
 pub struct ProcessRequest {
     pub executable: PathBuf,
@@ -20,6 +21,29 @@ pub struct ProcessRequest {
     pub timeout: Duration,
     /// Combined stdout + stderr ceiling, at most 1 MiB.
     pub max_output_bytes: usize,
+}
+
+/// Native point-of-use input. No Debug/Serialize; never accept environment names
+/// from a presentation DTO. Provider credentials use official environment support.
+#[derive(Default)]
+pub struct ProcessInput {
+    pub stdin: Zeroizing<Vec<u8>>,
+    pub credential: Option<(CredentialEnvironment, Zeroizing<String>)>,
+}
+#[derive(Clone, Copy)]
+pub enum CredentialEnvironment {
+    GitHub,
+    Cloudflare,
+    DigitalOcean,
+}
+impl CredentialEnvironment {
+    fn name(self) -> &'static str {
+        match self {
+            Self::GitHub => "GH_TOKEN",
+            Self::Cloudflare => "CLOUDFLARE_API_TOKEN",
+            Self::DigitalOcean => "DIGITALOCEAN_ACCESS_TOKEN",
+        }
+    }
 }
 
 // Deliberately no Debug: tool output can contain private paths and account data.
@@ -98,8 +122,18 @@ impl ProcessIo {
         request: ProcessRequest,
         cancellation: CancellationToken,
     ) -> Result<ProcessOutput, IoError> {
+        self.process_input(request, ProcessInput::default(), cancellation)
+            .await
+    }
+
+    pub async fn process_input(
+        &self,
+        request: ProcessRequest,
+        input: ProcessInput,
+        cancellation: CancellationToken,
+    ) -> Result<ProcessOutput, IoError> {
         let started = Instant::now();
-        let result = self.run_process(request, cancellation).await;
+        let result = self.run_process(request, input, cancellation).await;
         match &result {
             Ok(output) => tracing::info!(
                 event.name = "native.process.completed",
@@ -123,9 +157,14 @@ impl ProcessIo {
     async fn run_process(
         &self,
         request: ProcessRequest,
+        input: ProcessInput,
         cancellation: CancellationToken,
     ) -> Result<ProcessOutput, IoError> {
-        if !request.executable.is_absolute()
+        if input.stdin.len() > 16_384
+            || input.credential.as_ref().is_some_and(|(_, value)| {
+                value.is_empty() || value.len() > 16_384 || value.contains('\0')
+            })
+            || !request.executable.is_absolute()
             || request
                 .directory
                 .as_ref()
@@ -153,9 +192,16 @@ impl ProcessIo {
                 .env_clear()
                 .envs(native_environment())
                 .current_dir(directory)
-                .stdin(Stdio::null())
+                .stdin(if input.stdin.is_empty() {
+                    Stdio::null()
+                } else {
+                    Stdio::piped()
+                })
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
+            if let Some((name, value)) = &input.credential {
+                command.env(name.name(), value.as_str());
+            }
         });
         command.wrap(KillOnDrop);
         #[cfg(unix)]
@@ -173,6 +219,7 @@ impl ProcessIo {
             #[cfg(target_os = "macos")]
             leader_exited: false,
         };
+        let mut stdin = owned.child.stdin().take();
         let stdout = owned.child.stdout().take().ok_or(IoError::Transport)?;
         let stderr = owned.child.stderr().take().ok_or(IoError::Transport)?;
         let bytes = Arc::new(AtomicUsize::new(0));
@@ -186,6 +233,13 @@ impl ProcessIo {
                     },
                     bounded_read(stdout, bytes.clone(), request.max_output_bytes),
                     bounded_read(stderr, bytes, request.max_output_bytes),
+                    async {
+                        if let Some(mut stdin) = stdin.take() {
+                            stdin.write_all(&input.stdin).await.map_err(transport)?;
+                            stdin.shutdown().await.map_err(transport)?;
+                        }
+                        Ok::<_, IoError>(())
+                    },
                 )
             };
             tokio::select! {
@@ -197,7 +251,7 @@ impl ProcessIo {
             }
         };
         match result {
-            Ok((status, stdout, stderr)) => {
+            Ok((status, stdout, stderr, ())) => {
                 #[cfg(windows)]
                 owned.terminate_scope().map_err(transport)?;
                 Ok(ProcessOutput {

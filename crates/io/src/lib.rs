@@ -7,7 +7,7 @@ mod local;
 mod process;
 
 pub use local::LocalChannel;
-pub use process::{ProcessOutput, ProcessRequest};
+pub use process::{CredentialEnvironment, ProcessInput, ProcessOutput, ProcessRequest};
 pub use tokio_util::sync::CancellationToken;
 
 use std::{sync::Arc, time::Duration};
