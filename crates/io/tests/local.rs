@@ -104,7 +104,12 @@ fn slow_peer_cannot_refresh_the_absolute_deadline() {
 #[test]
 fn cancellation_is_terminal_even_with_buffered_data() {
     let peer = LocalPeer::new(|mut stream| {
-        let _ = stream.write_all(b"one\ntwo\n");
+        stream.write_all(b"one\ntwo\n").unwrap();
+        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        assert_eq!(stream.read(&mut [0; 1]).unwrap(), 0);
     });
     let cancellation = CancellationToken::new();
     let mut channel =
