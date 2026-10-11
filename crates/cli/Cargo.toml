@@ -8,12 +8,12 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-nddev-device-sync-adapter-io = { version = "=0.0.1-alpha.2", path = "../io" }
-nddev-device-sync-accounts = { version = "=0.0.1-alpha.17", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-accounts", rev = "e4f41528fdd668ce32105576546e84d2bea5b05f" }
-nddev-device-sync-vault = { version = "=0.0.1-alpha.4", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-vault", rev = "cf8b39f5f273b976ee03d72b102b5c3a3fafcfe5" }
+nddev-device-sync-adapter-io = { version = "=0.0.1-alpha.3", path = "../io" }
+nddev-device-sync-accounts = { version = "=0.0.1-alpha.18", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-accounts", rev = "1a2266342f2a981ffbd3de9bc9219549d3e5bf54" }
+nddev-device-sync-vault = { version = "=0.0.1-alpha.5", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-vault", rev = "3f31eb793878bc1423810ef0692a12e084ea895d" }
 serde_json = "1"
 tracing = "0.1"
-nddev-device-sync-telemetry = { version = "=0.0.1-alpha.5", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-observability", rev = "469a77aea2e234b50d0554625a761d52985e7cb0", features = ["client-traces"] }
+nddev-device-sync-telemetry = { version = "=0.0.1-alpha.6", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-observability", rev = "f3a7c16d0df0f0dc3912284db2e97d6894aaf5a0", features = ["client-traces"] }
 tokio = { version = "1.53", features = ["macros", "rt-multi-thread", "time"] }
 zeroize = "1.8"
 

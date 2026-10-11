@@ -108,6 +108,7 @@ async fn actual_native_vault_reference_drives_official_github_cli() {
         .save_record(
             None,
             0,
+            None,
             "Owned native credential consumer".into(),
             String::new(),
             secret.clone(),

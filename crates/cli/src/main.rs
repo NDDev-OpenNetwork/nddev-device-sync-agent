@@ -12,21 +12,9 @@ use tracing::Instrument;
 use zeroize::Zeroizing;
 
 fn data_directory() -> Result<PathBuf, &'static str> {
-    #[cfg(target_os = "linux")]
-    let root = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")));
-    #[cfg(target_os = "macos")]
-    let root = std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join("Library/Application Support"));
-    #[cfg(target_os = "windows")]
-    let root = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
-    let root = root.ok_or("native_directory_unavailable")?;
-    if !root.is_absolute() {
-        return Err("invalid_native_directory");
-    }
-    Ok(root.join("nddev-device-sync"))
+    nddev_device_sync_accounts::private_data_directory().map_err(|_| "native_directory_unavailable")
 }
+
 fn executable(name: &str) -> Result<PathBuf, &'static str> {
     let paths = std::env::var_os("PATH").ok_or("provider_unavailable")?;
     #[cfg(target_os = "windows")]
@@ -66,19 +54,22 @@ async fn operation(
         .refresh()
         .await
         .map_err(|_| "identity_unavailable")?;
-    if !view.authenticated || !view.session_verified {
+    if !view.authenticated || !(view.session_verified || view.offline_authorized) {
         return Err("sign_in_required");
     }
-    identity
-        .prepare_device("NDS agent".into())
-        .await
-        .map_err(|_| "device_unavailable")?;
+    if view.session_verified {
+        identity
+            .prepare_device("NDS agent".into())
+            .await
+            .map_err(|_| "device_unavailable")?;
+    }
     *export_identity = Some(identity.clone());
     let vault = VaultClient::new(identity, data_directory()?)
         .await
         .map_err(|_| "vault_unavailable")?;
-    let mut current = false;
-    for _ in 0..16 {
+    let offline = view.offline_authorized;
+    let mut current = offline;
+    for _ in 0..if offline { 0 } else { 16 } {
         match vault.synchronize().await {
             Ok(view) if !view.catching_up => {
                 current = true;
@@ -101,7 +92,7 @@ async fn operation(
                 .await
                 .map_err(|_| "vault_unavailable")?;
             Ok(
-                json!({"operation":"vault.list","records":page.items.iter().map(|record|json!({"ref":record.id,"title":record.title,"revision":record.revision,"observed_seq":record.observed_seq,"deleted":record.deleted,"conflicted":record.conflicted})).collect::<Vec<_>>(),"next_ref":if page.has_more {page.next_after} else {String::new()}}),
+                json!({"operation":"vault.list","offline":offline,"last_sync_at":vault.snapshot().last_sync_at,"pending":vault.snapshot().pending,"records":page.items.iter().map(|record|json!({"ref":record.id,"title":record.title,"revision":record.revision,"observed_seq":record.observed_seq,"deleted":record.deleted,"conflicted":record.conflicted,"pending":record.pending_id.is_some()})).collect::<Vec<_>>(),"next_ref":if page.has_more {page.next_after} else {String::new()}}),
             )
         }
         ("use", [record, provider]) => {
@@ -152,7 +143,9 @@ async fn operation(
             if !success {
                 return Err("provider_credential_rejected");
             }
-            Ok(json!({"operation":"vault.use","provider":provider,"verified":true}))
+            Ok(
+                json!({"operation":"vault.use","provider":provider,"verified":true,"replica_offline":offline}),
+            )
         }
         _ => Err("invalid_arguments"),
     }
@@ -170,6 +163,7 @@ async fn main() {
         target_prefixes: vec![
             "nds_agent".into(),
             "nds_accounts".into(),
+            "nddev_device_sync_vault".into(),
             "nddev_device_sync_adapter_io".into(),
         ],
         default_module: "agent".into(),
