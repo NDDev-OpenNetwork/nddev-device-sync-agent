@@ -2,7 +2,7 @@
 
 use nddev_device_sync_adapter_io::{CancellationToken, IoError, LocalChannel};
 use std::{
-    io::Write,
+    io::{Read, Write},
     os::unix::net::UnixListener,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
@@ -42,6 +42,12 @@ fn preserves_adjacent_frames_and_rejects_unterminated_payload() {
         // Explicit EOF keeps this a framing test. A full peer close can be a
         // reset on Darwin, whose correct outcome is a transport error instead.
         stream.shutdown(std::net::Shutdown::Write).unwrap();
+        // Keep the read half alive until the client finishes. Dropping the
+        // stream immediately can reset a Darwin connect/read despite FIN.
+        stream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        assert_eq!(stream.read(&mut [0; 1]).unwrap(), 0);
     });
     let mut channel = LocalChannel::connect(
         &peer.0,
