@@ -16,7 +16,7 @@ tracing = "0.1"
 
 [dependencies]
 nddev-device-sync-sysinfo = { version = "=0.0.1-alpha.1", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-sysinfo", rev = "7a18e05f8a1351988af6903c588b0b3ec776c2b0" }
-nddev-device-sync-clipboard = { version = "=0.0.1-alpha.2", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-clipboard", rev = "fd0d3e138fd6fd95effd12f438575c48c9036a2b" }
+nddev-device-sync-clipboard = { version = "=0.0.1-alpha.2", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-clipboard", rev = "1614e99538c5a989d70baa901e001e59b522b30f" }
 nddev-device-sync-cleaner = { version = "=0.0.1-alpha.1", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-cleaner", rev = "1c1a14dddca3d06456b5abef30570cdb3650aac8" }
 nddev-device-sync-updater = { version = "=0.0.1-alpha.1", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-updater", rev = "f228b0da9fa737454bd4334f442194f615d56586" }
 nddev-device-sync-gds = { version = "=0.0.1-alpha.1", git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-gds", rev = "ecbfb40eeeed21c8e53794f4caff603cee226d32" }
