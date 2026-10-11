@@ -25,3 +25,10 @@ provider. Dependencies use immutable Git revisions.
 
 This library has no standalone background daemon, remote-command endpoint,
 maintenance mutation, backup/recovery or private estate configuration.
+
+`nds-agent --server <origin> vault list [after_ref]` returns bounded metadata and
+secret references. `vault use <ref> github|cloudflare|digitalocean` consumes the
+secret natively for the official provider identity check; raw provider output
+and credentials are never returned. Sign in through NDS first. The CLI uses the
+same native session/device/vault stores and reconciles the server replica before
+use; conflicts, revocation and incomplete catch-up deny secret consumption.

@@ -181,3 +181,60 @@ async fn deadline_covers_child_exit_and_pipe_drain() {
     ));
     assert!(start.elapsed() < Duration::from_secs(2));
 }
+
+#[test]
+#[ignore = "only launched as a real native credential consumer"]
+fn child_secret_input() {
+    use std::io::Read;
+    let credential = std::env::var("GH_TOKEN").unwrap();
+    let mut input = Vec::new();
+    std::io::stdin().read_to_end(&mut input).unwrap();
+    assert_eq!(input, credential.as_bytes());
+    assert!(std::env::var_os("GH_DEBUG").is_none());
+    print!("consumed");
+}
+
+#[tokio::test]
+async fn actual_native_stdin_and_official_credential_environment() {
+    use nddev_device_sync_adapter_io::{CredentialEnvironment, ProcessInput};
+    use zeroize::Zeroizing;
+    let io = NativeIo::new(1).unwrap().process_handle();
+    let input = ProcessInput {
+        stdin: Zeroizing::new(b"owned private native input".to_vec()),
+        credential: Some((
+            CredentialEnvironment::GitHub,
+            Zeroizing::new("owned private native input".into()),
+        )),
+    };
+    let output = io
+        .process_input(
+            ignored_request("child_secret_input"),
+            input,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("consumed")
+    );
+}
+
+#[tokio::test]
+async fn native_private_input_is_bounded_before_spawn() {
+    use nddev_device_sync_adapter_io::ProcessInput;
+    use zeroize::Zeroizing;
+    let io = NativeIo::new(1).unwrap().process_handle();
+    let request = request("child_unicode");
+    let input = ProcessInput {
+        stdin: Zeroizing::new(vec![0; 16_385]),
+        credential: None,
+    };
+    assert!(matches!(
+        io.process_input(request, input, CancellationToken::new())
+            .await,
+        Err(IoError::InvalidConfiguration)
+    ));
+}

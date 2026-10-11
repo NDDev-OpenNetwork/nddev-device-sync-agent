@@ -1,0 +1,25 @@
+[package]
+name = "nds-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+nddev-device-sync-adapter-io = { path = "../io" }
+nddev-device-sync-accounts = { git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-accounts", rev = "65ad593d6116a992934d1b06f3874fadfb89c37b" }
+nddev-device-sync-vault = { git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-vault", rev = "3b3561140b231b4b72e86111e4accc9ad9401007" }
+serde_json = "1"
+tracing = "0.1"
+nddev-device-sync-telemetry = { git = "https://github.com/NDDev-OpenNetwork/nddev-device-sync-observability", rev = "863a0caad5a06a450a0d99a23675bfb5b5959b2e" }
+tokio = { version = "1.53", features = ["macros", "rt-multi-thread", "time"] }
+zeroize = "1.8"
+
+[features]
+development-http = ["nddev-device-sync-accounts/development-http", "nddev-device-sync-vault/development-http"]
+
+[dev-dependencies]
+tempfile = "3"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
