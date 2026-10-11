@@ -149,6 +149,19 @@ async fn actual_native_vault_reference_drives_official_github_cli() {
     .unwrap();
     let result: Value = serde_json::from_slice(&output.stdout)
         .expect("CLI stdout must contain exactly one JSON result");
+    if let Ok(policy) = std::env::var("NDS_TEST_EXPECT_EXPORT_MODE") {
+        assert!(matches!(
+            policy.as_str(),
+            "enabled" | "disabled" | "unknown"
+        ));
+        assert_eq!(result["diagnostics"]["export"], policy);
+        if policy == "disabled" {
+            assert_eq!(result["diagnostics"]["acknowledged_events"], 0);
+            assert_eq!(result["diagnostics"]["acknowledged_spans"], 0);
+            assert_eq!(result["diagnostics"]["undelivered"], 0);
+            assert!(result["diagnostics"]["dropped"].as_u64().unwrap() > 0);
+        }
+    }
     assert_eq!(output.status.success(), positive.is_some());
     if positive.is_some() {
         assert_eq!(result["verified"], true);
