@@ -29,6 +29,8 @@ fn executable(name: &str) -> Result<PathBuf, &'static str> {
     let paths = std::env::var_os("PATH").ok_or("provider_unavailable")?;
     #[cfg(target_os = "windows")]
     let name = format!("{name}.exe");
+    #[cfg(target_os = "windows")]
+    let name = name.as_str();
     for directory in std::env::split_paths(&paths)
         .take(64)
         .filter(|directory| directory.is_absolute())
