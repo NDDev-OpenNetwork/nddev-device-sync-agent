@@ -1971,7 +1971,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-accounts"
 version = "0.0.1-alpha.18"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-accounts?rev=1a2266342f2a981ffbd3de9bc9219549d3e5bf54#1a2266342f2a981ffbd3de9bc9219549d3e5bf54"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-accounts?rev=b9c1b4c3756f2a5976c5f3aaf6371901a627fa3e#b9c1b4c3756f2a5976c5f3aaf6371901a627fa3e"
 dependencies = [
  "android-native-keyring-store",
  "apple-native-keyring-store",
@@ -2080,7 +2080,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-clipboard"
 version = "0.0.1-alpha.3"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-clipboard?rev=da5abbe67de5c7b52910e246c6f276b686b6f238#da5abbe67de5c7b52910e246c6f276b686b6f238"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-clipboard?rev=7fae8fecb4597f8cd1454c7cc8e86ca4f72a5ea7#7fae8fecb4597f8cd1454c7cc8e86ca4f72a5ea7"
 dependencies = [
  "arboard",
  "jni 0.21.1",
@@ -2099,7 +2099,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-domain"
 version = "0.0.8"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-core?rev=fbe50f9994dde44f26ba803ac82c5d2ecfa1cacd#fbe50f9994dde44f26ba803ac82c5d2ecfa1cacd"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-core?rev=d5d16cc3f59aa879136c40d160e756d70c87b5da#d5d16cc3f59aa879136c40d160e756d70c87b5da"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -2186,7 +2186,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-vault"
 version = "0.0.1-alpha.5"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-vault?rev=3f31eb793878bc1423810ef0692a12e084ea895d#3f31eb793878bc1423810ef0692a12e084ea895d"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-vault?rev=2e23e9dca57d42fd86bc8c8b5513716c0204a50a#2e23e9dca57d42fd86bc8c8b5513716c0204a50a"
 dependencies = [
  "base64 0.22.1",
  "js-sys",
