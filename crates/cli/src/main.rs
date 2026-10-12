@@ -171,7 +171,7 @@ async fn main() {
     };
     let traces = ClientTraces::new(&config).ok();
     let mut logger = traces.as_ref().and_then(|traces| {
-        nddev_device_sync_telemetry::install_with_tracer_to(
+        nddev_device_sync_telemetry::install_client_with_tracer_to(
             config,
             traces.tracer(),
             nddev_device_sync_telemetry::LocalOutput::Stderr,

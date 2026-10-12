@@ -1971,7 +1971,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-accounts"
 version = "0.0.1-alpha.18"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-accounts?rev=b9c1b4c3756f2a5976c5f3aaf6371901a627fa3e#b9c1b4c3756f2a5976c5f3aaf6371901a627fa3e"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-accounts?rev=eeb6e947f5c10d1cf179f5a94ef7ad7b23942680#eeb6e947f5c10d1cf179f5a94ef7ad7b23942680"
 dependencies = [
  "android-native-keyring-store",
  "apple-native-keyring-store",
@@ -2080,7 +2080,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-clipboard"
 version = "0.0.1-alpha.3"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-clipboard?rev=7fae8fecb4597f8cd1454c7cc8e86ca4f72a5ea7#7fae8fecb4597f8cd1454c7cc8e86ca4f72a5ea7"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-clipboard?rev=88a6262555ca4f2bdffe522133f15b36a4574c83#88a6262555ca4f2bdffe522133f15b36a4574c83"
 dependencies = [
  "arboard",
  "jni 0.21.1",
@@ -2150,13 +2150,14 @@ dependencies = [
 
 [[package]]
 name = "nddev-device-sync-telemetry"
-version = "0.0.1-alpha.6"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-observability?rev=f3a7c16d0df0f0dc3912284db2e97d6894aaf5a0#f3a7c16d0df0f0dc3912284db2e97d6894aaf5a0"
+version = "0.0.1-alpha.7"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-observability?rev=77e7e3ece9ac5aff400ce7a0880e52503b5ee41c#77e7e3ece9ac5aff400ce7a0880e52503b5ee41c"
 dependencies = [
  "android_log-sys",
  "chrono",
  "futures",
  "gloo-timers",
+ "js-sys",
  "jsonschema",
  "opentelemetry",
  "opentelemetry-proto",
@@ -2186,7 +2187,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-vault"
 version = "0.0.1-alpha.5"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-vault?rev=2e23e9dca57d42fd86bc8c8b5513716c0204a50a#2e23e9dca57d42fd86bc8c8b5513716c0204a50a"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-vault?rev=a10f7a35daeae37070b4986e0086db63f2a6714f#a10f7a35daeae37070b4986e0086db63f2a6714f"
 dependencies = [
  "base64 0.22.1",
  "js-sys",
