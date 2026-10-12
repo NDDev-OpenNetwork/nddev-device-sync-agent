@@ -155,7 +155,7 @@ async fn main() {
     let config = nddev_device_sync_telemetry::Config {
         service: "nddev-device-sync-agent".into(),
         version: env!("CARGO_PKG_VERSION").into(),
-        repository: "NDDev-OpenNetwork/nddev-device-sync-agent".into(),
+        repository: "NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-agent".into(),
         commit: option_env!("NDS_SOURCE_COMMIT").unwrap_or("unknown").into(),
         channel: "alpha".into(),
         standards: "unreleased".into(),

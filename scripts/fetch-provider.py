@@ -15,7 +15,18 @@ def require(condition, message="invalid native provider specification"):
     if not condition:
         raise ValueError(message)
 
-spec = json.loads(Path(sys.argv[1]).read_text())
+spec_path = Path(sys.argv[1]).resolve(strict=True)
+spec = json.loads(spec_path.read_text())
+attestation_bundle = None
+if "attestation_bundle" in spec:
+    require(spec.get("attestation") is True)
+    relative = Path(spec["attestation_bundle"])
+    require(not relative.is_absolute())
+    attestation_bundle = (spec_path.parent / relative).resolve(strict=True)
+    require(attestation_bundle.is_relative_to(spec_path.parent)
+            and attestation_bundle.is_file()
+            and 0 < attestation_bundle.stat().st_size <= 1_000_000)
+    require(re.fullmatch(r"[a-f0-9]{40}", spec.get("source_commit", "")))
 root = Path(sys.argv[2]).resolve()
 root.mkdir(mode=0o700, parents=True, exist_ok=False)
 repository, release, asset = (spec[key] for key in ("repository", "release", "linux_asset"))
@@ -38,9 +49,12 @@ with urllib.request.urlopen(url, timeout=20) as source, archive.open("xb") as ta
         digest.update(chunk)
 require(size == spec["size"] and digest.hexdigest() == spec["sha256"], "native provider digest/size mismatch")
 if spec.get("attestation"):
-    subprocess.run(["gh", "attestation", "verify", str(archive), "--repo", repository,
-                    "--signer-workflow", repository + "/.github/workflows/release.yml",
-                    "--source-ref", "refs/tags/" + release, "--deny-self-hosted-runners"], check=True, timeout=60)
+    verify = ["gh", "attestation", "verify", str(archive), "--repo", repository,
+              "--signer-workflow", repository + "/.github/workflows/release.yml",
+              "--source-ref", "refs/tags/" + release, "--deny-self-hosted-runners"]
+    if attestation_bundle is not None:
+        verify += ["--bundle", str(attestation_bundle), "--source-digest", spec["source_commit"]]
+    subprocess.run(verify, check=True, timeout=60)
 extracted = root / "extracted"
 extracted.mkdir(mode=0o700)
 if asset.endswith(".tar.gz"):

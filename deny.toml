@@ -13,15 +13,15 @@ wildcards = "deny"
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-git = [
-    "https://github.com/NDDev-OpenNetwork/nddev-device-sync-accounts",
-    "https://github.com/NDDev-OpenNetwork/nddev-device-sync-vault",
+    "https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-accounts",
+    "https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-vault",
     "https://github.com/NDDev-OpenNetwork/nddev-device-sync-protocol.git",
     "https://github.com/NDDev-OpenNetwork/nddev-device-sync-agent",
     "https://github.com/NDDev-OpenNetwork/nddev-device-sync-cleaner",
-    "https://github.com/NDDev-OpenNetwork/nddev-device-sync-clipboard",
+    "https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-clipboard",
     "https://github.com/NDDev-OpenNetwork/nddev-device-sync-core",
     "https://github.com/NDDev-OpenNetwork/nddev-device-sync-gds",
-    "https://github.com/NDDev-OpenNetwork/nddev-device-sync-observability",
+    "https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-observability",
     "https://github.com/NDDev-OpenNetwork/nddev-device-sync-rds",
     "https://github.com/NDDev-OpenNetwork/nddev-device-sync-sysinfo",
     "https://github.com/NDDev-OpenNetwork/nddev-device-sync-updater",
