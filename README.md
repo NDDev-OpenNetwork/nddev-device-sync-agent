@@ -43,3 +43,19 @@ Provider acceptance never extracts a working CLI account token into fixtures.
 The default real GitHub check uses a generated invalid value and verifies denial
 without secret/output leakage. A successful provider check requires an explicitly
 supplied isolated test account credential via `NDS_TEST_ISOLATED_GITHUB_TOKEN_FILE`.
+
+Linux GDS uses the bundled Rust worker from the locked GDS dependency and the
+native module graph's IO341 process owner. Build it with
+`cargo run --locked -p nddev-device-sync-agent --bin nds-package-gds-worker --
+--bundle <absolute-staging-directory>`. Use the receipt's actual
+`NDS_GDS_WORKER_SHA256` for the host build and deliver the fixed worker beside
+the host. Downstream Flutter packaging must also track that digest in hook
+user_defines so warm caches cannot retain another worker identity.
+
+The agent admits only that fixed sibling with bounded streaming hash checks.
+Runtime PATH/environment and presentation input cannot choose its executable
+or expected hash. Verification uses the existing trusted installation boundary;
+hash followed by execution through a path is not race-free attestation.
+Unpackaged Linux builds leave GDS unconfigured. macOS/Windows GDS refuses
+execution until its native resource boundary is qualified; other module support
+is unchanged. Provider acceptance runs only owned temporary copies and daemons.
