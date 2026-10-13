@@ -78,6 +78,9 @@ async fn operation(
             Ok(_) | Err(nddev_device_sync_vault::Error::Busy) => {
                 tokio::time::sleep(Duration::from_millis(100)).await
             }
+            Err(nddev_device_sync_vault::Error::CapacityExhausted) => {
+                return Err("sync_capacity_exhausted");
+            }
             Err(_) => return Err("vault_unavailable"),
         }
     }
