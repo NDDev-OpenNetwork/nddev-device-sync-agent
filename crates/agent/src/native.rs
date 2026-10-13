@@ -1,7 +1,9 @@
 use crate::view::{AgentError, ModuleState, Reachability};
 use nddev_device_sync_adapter_io::{CancellationToken, IoError, NativeIo};
 use nddev_device_sync_clipboard::{Clipboard, ReadClipboard};
-use nddev_device_sync_domain::{ModuleDescriptor, ModuleGraph};
+use nddev_device_sync_domain::{
+    ModuleDescriptor, ModuleGraph, ModuleId, Platform, modules::query_outcome,
+};
 use nddev_device_sync_sysinfo::{ReadSystemInfo, SystemInfo};
 use std::{
     future::Future,
@@ -18,6 +20,8 @@ use nddev_device_sync_updater::Updater;
 
 pub struct NativeAgent {
     modules: Mutex<Vec<ModuleState>>,
+    graph: ModuleGraph,
+    platform: Platform,
     cancellation: CancellationToken,
     sysinfo: Option<SystemInfo>,
     clipboard: Option<Clipboard>,
@@ -35,21 +39,6 @@ impl Drop for NativeAgent {
 
 impl NativeAgent {
     pub fn discover() -> Result<Self, AgentError> {
-        let io = NativeIo::new(8).map_err(AgentError::from)?;
-        let sysinfo = SystemInfo::for_current_user(io.local_handle()).ok();
-        let clipboard = Clipboard::for_current_user(io.local_handle()).ok();
-        let cleaner = executable("rldyour-cleaner")
-            .map(|path| Cleaner::new(io.process_handle(), path))
-            .transpose()?;
-        let updater = executable("rldyour-updater")
-            .map(|path| Updater::new(io.process_handle(), path))
-            .transpose()?;
-        let gds = executable("gds")
-            .map(|path| Gds::new(io.process_handle(), path))
-            .transpose()?;
-        let rds = executable("rds")
-            .map(|path| Rds::new(io.process_handle(), path, None))
-            .transpose()?;
         let mut graph = ModuleGraph::default();
         for manifest in [
             nddev_device_sync_sysinfo::MANIFEST,
@@ -66,6 +55,52 @@ impl NativeAgent {
                 .map_err(|_| AgentError::InvalidContract)?;
         }
         graph.validate().map_err(|_| AgentError::InvalidContract)?;
+        let platform = current_platform();
+        let supported = |id: &str| {
+            graph
+                .iter()
+                .find(|descriptor| descriptor.id.as_str() == id)
+                .is_some_and(|descriptor| descriptor.platforms.contains(&platform))
+        };
+        let io = NativeIo::new(8).map_err(io_error)?;
+        let sysinfo = supported("sysinfo")
+            .then(|| SystemInfo::for_current_user(io.local_handle()).ok())
+            .flatten();
+        let clipboard = supported("clipboard")
+            .then(|| Clipboard::for_current_user(io.local_handle()).ok())
+            .flatten();
+        let cleaner = if supported("cleaner") {
+            executable("rldyour-cleaner")
+                .map(|path| Cleaner::new(io.process_handle(), path))
+                .transpose()
+                .map_err(io_error)?
+        } else {
+            None
+        };
+        let updater = if supported("updater") {
+            executable("rldyour-updater")
+                .map(|path| Updater::new(io.process_handle(), path))
+                .transpose()
+                .map_err(io_error)?
+        } else {
+            None
+        };
+        let gds = if supported("gds") {
+            executable("gds")
+                .map(|path| Gds::new(io.process_handle(), path))
+                .transpose()
+                .map_err(io_error)?
+        } else {
+            None
+        };
+        let rds = if supported("rds") {
+            executable("rds")
+                .map(|path| Rds::new(io.process_handle(), path, None))
+                .transpose()
+                .map_err(io_error)?
+        } else {
+            None
+        };
         let modules = graph
             .iter()
             .map(|descriptor| ModuleState {
@@ -87,6 +122,8 @@ impl NativeAgent {
             .collect();
         Ok(Self {
             modules: Mutex::new(modules),
+            graph,
+            platform,
             cancellation: CancellationToken::new(),
             sysinfo,
             clipboard,
@@ -115,27 +152,35 @@ impl NativeAgent {
         work: impl Future<Output = Result<T, AgentError>>,
     ) -> Result<T, AgentError> {
         async {
-            if self.cancellation.is_cancelled() { return Err(AgentError::Cancelled); }
             let started = Instant::now();
-            let result = work.await;
-            // Caller/admission failures are not new evidence about the provider.
-            let observed = !matches!(result, Err(AgentError::Busy | AgentError::InvalidInput | AgentError::Cancelled | AgentError::UnsupportedPlatform | AgentError::InvalidContract));
-            if observed {
-                let observed_at_ms = SystemTime::now().duration_since(UNIX_EPOCH).ok().and_then(|value| value.as_millis().try_into().ok());
-                if let Some(state) = self.modules.lock().unwrap_or_else(|error| error.into_inner()).iter_mut().find(|state| state.id == module)
-                    && state.configured
-                {
-                    state.observed_at_ms = observed_at_ms;
-                    state.error = result.as_ref().err().copied();
-                    state.reachability = match &result { Ok(_) => Reachability::Reachable, Err(AgentError::Unavailable) => Reachability::Unavailable, Err(_) => Reachability::Failed };
+            let result = if self.cancellation.is_cancelled() {
+                Err(AgentError::Cancelled)
+            } else {
+                match self.admitted(module) {
+                    Ok(true) => work.await,
+                    Ok(false) => Err(AgentError::UnsupportedPlatform),
+                    Err(error) => Err(error),
                 }
+            };
+            let observed_at_ms = SystemTime::now().duration_since(UNIX_EPOCH).ok().and_then(|value| value.as_millis().try_into().ok());
+            if let Some(state) = self.modules.lock().unwrap_or_else(|error| error.into_inner()).iter_mut().find(|state| state.id == module) {
+                state.observe(&result, observed_at_ms);
             }
+            nddev_device_sync_telemetry::finish_operation_span(
+                &tracing::Span::current(), query_outcome(&result).terminal_failure(),
+            );
             match &result {
                 Ok(_) => tracing::info!(event.name = "module.query.completed", module, duration_ms = started.elapsed().as_millis() as u64, outcome = "ok"),
                 Err(error) => tracing::warn!(event.name = "module.query.failed", module, duration_ms = started.elapsed().as_millis() as u64, error.type = %error, outcome = "error"),
             }
             result
         }.instrument(nddev_device_sync_telemetry::operation_span(module, "io").map_err(|_| AgentError::InvalidContract)?).await
+    }
+
+    fn admitted(&self, module: &str) -> Result<bool, AgentError> {
+        let id = ModuleId::new(module).map_err(|_| AgentError::InvalidContract)?;
+        let descriptor = self.graph.get(&id).ok_or(AgentError::InvalidContract)?;
+        Ok(descriptor.platforms.contains(&self.platform))
     }
 
     pub async fn system_info(
@@ -148,7 +193,7 @@ impl NativeAgent {
                 .sample(self.cancellation.clone())
                 .await
                 .map_err(|error| match error {
-                    nddev_device_sync_sysinfo::Error::Io(error) => error.into(),
+                    nddev_device_sync_sysinfo::Error::Io(error) => io_error(error),
                     nddev_device_sync_sysinfo::Error::UnsupportedPlatform => {
                         AgentError::UnsupportedPlatform
                     }
@@ -189,12 +234,12 @@ impl NativeAgent {
         &self,
     ) -> Result<nddev_device_sync_cleaner::Diagnostics, AgentError> {
         self.observe("cleaner", async {
-            Ok(self
-                .cleaner
+            self.cleaner
                 .as_ref()
                 .ok_or(AgentError::Unavailable)?
                 .diagnose(self.cancellation.clone())
-                .await?)
+                .await
+                .map_err(io_error)
         })
         .await
     }
@@ -203,12 +248,12 @@ impl NativeAgent {
         &self,
     ) -> Result<nddev_device_sync_cleaner::CleanerRunSummary, AgentError> {
         self.observe("cleaner", async {
-            Ok(self
-                .cleaner
+            self.cleaner
                 .as_ref()
                 .ok_or(AgentError::Unavailable)?
                 .preview(self.cancellation.clone())
-                .await?)
+                .await
+                .map_err(io_error)
         })
         .await
     }
@@ -217,24 +262,24 @@ impl NativeAgent {
         &self,
     ) -> Result<nddev_device_sync_cleaner::CleanerRunSummary, AgentError> {
         self.observe("cleaner", async {
-            Ok(self
-                .cleaner
+            self.cleaner
                 .as_ref()
                 .ok_or(AgentError::Unavailable)?
                 .last_run(self.cancellation.clone())
-                .await?)
+                .await
+                .map_err(io_error)
         })
         .await
     }
 
     pub async fn update_plan(&self) -> Result<nddev_device_sync_updater::Plan, AgentError> {
         self.observe("updater", async {
-            Ok(self
-                .updater
+            self.updater
                 .as_ref()
                 .ok_or(AgentError::Unavailable)?
                 .plan(self.cancellation.clone())
-                .await?)
+                .await
+                .map_err(io_error)
         })
         .await
     }
@@ -243,12 +288,12 @@ impl NativeAgent {
         &self,
     ) -> Result<nddev_device_sync_updater::UpdateRunSummary, AgentError> {
         self.observe("updater", async {
-            Ok(self
-                .updater
+            self.updater
                 .as_ref()
                 .ok_or(AgentError::Unavailable)?
                 .last_run(self.cancellation.clone())
-                .await?)
+                .await
+                .map_err(io_error)
         })
         .await
     }
@@ -258,12 +303,12 @@ impl NativeAgent {
         path: &Path,
     ) -> Result<nddev_device_sync_gds::Status, AgentError> {
         self.observe("gds", async {
-            Ok(self
-                .gds
+            self.gds
                 .as_ref()
                 .ok_or(AgentError::Unavailable)?
                 .status(path, self.cancellation.clone())
-                .await?)
+                .await
+                .map_err(io_error)
         })
         .await
     }
@@ -272,36 +317,44 @@ impl NativeAgent {
         &self,
     ) -> Result<nddev_device_sync_rds::RemoteSnapshot, AgentError> {
         self.observe("rds", async {
-            Ok(self
-                .rds
+            self.rds
                 .as_ref()
                 .ok_or(AgentError::Unavailable)?
                 .sessions(self.cancellation.clone())
-                .await?)
+                .await
+                .map_err(io_error)
         })
         .await
     }
 }
 
-impl From<IoError> for AgentError {
-    fn from(error: IoError) -> Self {
-        match error {
-            IoError::Busy => Self::Busy,
-            IoError::Unavailable => Self::Unavailable,
-            IoError::InvalidConfiguration => Self::InvalidInput,
-            IoError::Timeout => Self::Timeout,
-            IoError::Cancelled => Self::Cancelled,
-            IoError::ProviderExit | IoError::Transport => Self::ProviderFailed,
-            IoError::OutputLimit | IoError::InvalidFrame | IoError::InvalidResponse => {
-                Self::InvalidResponse
-            }
+fn io_error(error: IoError) -> AgentError {
+    match error {
+        IoError::Busy => AgentError::Busy,
+        IoError::Unavailable => AgentError::Unavailable,
+        IoError::InvalidConfiguration => AgentError::InvalidInput,
+        IoError::Timeout => AgentError::Timeout,
+        IoError::Cancelled => AgentError::Cancelled,
+        IoError::ProviderExit | IoError::Transport => AgentError::ProviderFailed,
+        IoError::OutputLimit | IoError::InvalidFrame | IoError::InvalidResponse => {
+            AgentError::InvalidResponse
         }
+    }
+}
+
+fn current_platform() -> Platform {
+    if cfg!(target_os = "linux") {
+        Platform::Linux
+    } else if cfg!(target_os = "macos") {
+        Platform::Macos
+    } else {
+        Platform::Windows
     }
 }
 
 fn clipboard_error(error: nddev_device_sync_clipboard::Error) -> AgentError {
     match error {
-        nddev_device_sync_clipboard::Error::Io(error) => error.into(),
+        nddev_device_sync_clipboard::Error::Io(error) => io_error(error),
         nddev_device_sync_clipboard::Error::Protocol => AgentError::InvalidResponse,
         nddev_device_sync_clipboard::Error::Provider => AgentError::ProviderFailed,
     }
@@ -331,4 +384,31 @@ fn executable(name: &str) -> Option<PathBuf> {
         return Some(candidate);
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn unsupported_manifest_platform_is_refused_before_io() {
+        let mut agent = NativeAgent::discover().unwrap();
+        agent.platform = Platform::Windows;
+        let work = std::future::poll_fn(|_| -> std::task::Poll<Result<(), AgentError>> {
+            panic!("unsupported manifest platform entered adapter I/O")
+        });
+        assert!(matches!(
+            agent.observe("gds", work).await,
+            Err(AgentError::UnsupportedPlatform)
+        ));
+        let state = agent
+            .modules()
+            .into_iter()
+            .find(|module| module.id == "gds")
+            .unwrap();
+        assert!(
+            state.reachability == Reachability::NotChecked
+                && state.observed_at_ms.is_none()
+                && state.error.is_none()
+        );
+    }
 }

@@ -1,44 +1,8 @@
-/// Portable presentation metadata. Reachability describes the last native
-/// query, not the success of historical maintenance or a remote connection.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Reachability {
-    NotChecked,
-    Reachable,
-    Unavailable,
-    Failed,
-}
-
-#[derive(Clone, Debug)]
-pub struct ModuleState {
-    pub id: String,
-    pub version: String,
-    pub configured: bool,
-    pub reachability: Reachability,
-    pub observed_at_ms: Option<u64>,
-    pub error: Option<AgentError>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum AgentError {
-    #[error("unsupported_platform")]
-    UnsupportedPlatform,
-    #[error("provider_unavailable")]
-    Unavailable,
-    #[error("operation_busy")]
-    Busy,
-    #[error("invalid_input")]
-    InvalidInput,
-    #[error("operation_timeout")]
-    Timeout,
-    #[error("operation_cancelled")]
-    Cancelled,
-    #[error("provider_failed")]
-    ProviderFailed,
-    #[error("invalid_response")]
-    InvalidResponse,
-    #[error("invalid_module_contract")]
-    InvalidContract,
-}
+/// Public aliases keep the agent API names while core owns the query policy.
+pub use nddev_device_sync_domain::{
+    modules::{ModuleError as AgentError, ModuleObservation as ModuleState},
+    state::Reachability,
+};
 
 pub use nddev_device_sync_cleaner::view as cleaner;
 pub use nddev_device_sync_clipboard::view as clipboard;

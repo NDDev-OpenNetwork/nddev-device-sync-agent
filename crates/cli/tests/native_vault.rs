@@ -115,6 +115,22 @@ async fn actual_native_vault_reference_drives_official_github_cli() {
         )
         .await
         .unwrap();
+    // Inspect only this fixture's durable encrypted replica, including WAL.
+    let files = std::fs::read_dir(root.path().join("nddev-device-sync/sync")).unwrap();
+    let mut persisted = 0;
+    for entry in files {
+        let path = entry.unwrap().path();
+        if path.is_file() {
+            let bytes = std::fs::read(path).unwrap();
+            assert!(
+                !bytes
+                    .windows(secret.len())
+                    .any(|value| value == secret.as_bytes())
+            );
+            persisted += bytes.len();
+        }
+    }
+    assert!(persisted > 0);
     vault.synchronize().await.unwrap();
     let reference = vault
         .records(String::new())
@@ -125,6 +141,46 @@ async fn actual_native_vault_reference_drives_official_github_cli() {
         .find(|record| record.title == "Owned native credential consumer" && !record.conflicted)
         .unwrap()
         .id;
+    let mut lists = Vec::new();
+    for _ in 0..2 {
+        let output = tokio::time::timeout(
+            Duration::from_secs(60),
+            tokio::process::Command::new(env!("CARGO_BIN_EXE_nds-agent"))
+                .args(["--server", endpoint, "vault", "list"])
+                .env("XDG_STATE_HOME", root.path())
+                .output(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(output.status.success());
+        let page: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(page["operation"], "vault.list");
+        assert!(
+            !output
+                .stdout
+                .windows(secret.len())
+                .any(|value| value == secret.as_bytes())
+        );
+        assert!(
+            !output
+                .stderr
+                .windows(secret.len())
+                .any(|value| value == secret.as_bytes())
+        );
+        lists.push(page["records"].clone());
+    }
+    assert_eq!(
+        lists[0], lists[1],
+        "read-only replay must preserve committed record metadata"
+    );
+    assert!(
+        lists[0]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|record| record["ref"] == reference)
+    );
     let credentials = identity.vault_credentials().unwrap();
     let command = ProcessRequest {
         executable: std::path::PathBuf::from(env!("CARGO_BIN_EXE_nds-agent")),
@@ -181,6 +237,39 @@ async fn actual_native_vault_reference_drives_official_github_cli() {
             .windows(secret.len())
             .any(|value| value == secret.as_bytes())
     );
+    if let Ok(path) = std::env::var("NDS_TEST_CLI_EVIDENCE_FILE") {
+        let path = std::path::PathBuf::from(path);
+        assert!(path.is_absolute() && !path.starts_with(env!("CARGO_MANIFEST_DIR")));
+        let events: Vec<Value> = output
+            .stderr
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
+            .map(|line| serde_json::from_slice(line).unwrap())
+            .collect();
+        let operation = events
+            .iter()
+            .find(|event| {
+                event["event.name"] == "agent.operation.failed"
+                    || event["event.name"] == "agent.operation.completed"
+            })
+            .unwrap();
+        let trace = operation["trace_id"].as_str().unwrap();
+        let span = operation["span_id"].as_str().unwrap();
+        assert!(trace.len() == 32 && span.len() == 16);
+        std::fs::write(
+            path,
+            serde_json::to_vec(&serde_json::json!({
+                "trace_id":trace,"span_id":span,"diagnostics":result["diagnostics"],
+                "source_repository":operation["source.repository"],
+                "source_commit":operation["source.commit"],
+                "encrypted_storage_verified":true,"metadata_replay_verified":true,
+                "secret_canary_absent":true,"official_provider_positive":positive.is_some(),
+                "runtime_event_count":events.len()
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    }
     credentials.delete().await.unwrap();
     identity.logout().await.unwrap();
 }
