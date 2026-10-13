@@ -199,17 +199,18 @@ async fn native_timeout_uses_core_failure_observation_and_error_span() {
 }
 
 #[tokio::test]
-#[ignore = "requires scripts/check-agent.py with the pinned real GDS provider and owned Git repository"]
+#[ignore = "requires scripts/check-agent.py with the verified packaged Rust worker and owned Git repository"]
 async fn native_gds_query_uses_core_observation_and_projection() {
     let repository = std::path::PathBuf::from(std::env::var("NDS_AGENT_TEST_REPOSITORY").unwrap());
     assert!(repository.is_absolute());
     let agent = NativeAgent::discover().unwrap();
     let (traces, feed, dispatch) = telemetry();
-    agent
+    let result = agent
         .repository_status(&repository)
         .with_subscriber(dispatch)
         .await
         .unwrap();
+    assert_eq!(result.status.unwrap().remote_freshness, "unknown");
     let state = agent
         .modules()
         .into_iter()
@@ -234,9 +235,9 @@ async fn native_gds_query_uses_core_observation_and_projection() {
     traces.shutdown();
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 #[tokio::test]
-async fn windows_gds_is_unconfigured_and_refuses_queries() {
+async fn unqualified_gds_platform_is_unconfigured_and_refuses_queries() {
     let agent = NativeAgent::discover().unwrap();
     let state = agent
         .modules()
@@ -250,4 +251,36 @@ async fn windows_gds_is_unconfigured_and_refuses_queries() {
             .await,
         Err(AgentError::UnsupportedPlatform)
     ));
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/check-agent.py with invalid owned worker copies"]
+async fn gds_worker_admission_has_no_path_fallback() {
+    let case = std::env::var("NDS_INVALID_WORKER").unwrap();
+    let marker = std::path::PathBuf::from(std::env::var("NDS_GDS_EXECUTION_MARKER").unwrap());
+    match case.as_str() {
+        "missing" | "wrong-sibling" => {
+            let agent = NativeAgent::discover().unwrap();
+            let state = agent
+                .modules()
+                .into_iter()
+                .find(|state| state.id == "gds")
+                .unwrap();
+            assert!(!state.configured && state.observed_at_ms.is_none());
+            let repository =
+                std::path::PathBuf::from(std::env::var("NDS_AGENT_TEST_REPOSITORY").unwrap());
+            assert!(matches!(
+                agent.repository_status(&repository).await,
+                Err(AgentError::Unavailable)
+            ));
+        }
+        "corrupt" | "symlink" | "oversized" => {
+            assert!(matches!(
+                NativeAgent::discover(),
+                Err(AgentError::InvalidContract)
+            ));
+        }
+        _ => panic!("unexpected qualification case"),
+    }
+    assert!(!marker.exists());
 }
