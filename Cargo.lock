@@ -2013,6 +2013,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "nddev-device-sync-accounts"
+version = "0.0.1-alpha.19"
+source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-accounts?rev=99d504db29326dc9148857a55526332c50c12354#99d504db29326dc9148857a55526332c50c12354"
+dependencies = [
+ "android-native-keyring-store",
+ "apple-native-keyring-store",
+ "base64 0.22.1",
+ "ed25519-dalek",
+ "futures",
+ "gloo-timers",
+ "http",
+ "jni 0.21.1",
+ "jni 0.22.4",
+ "js-sys",
+ "keyring-core",
+ "libc",
+ "nddev-device-sync-domain 0.0.9",
+ "nddev-device-sync-http-signatures",
+ "nddev-device-sync-telemetry 0.0.1-alpha.9",
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "reqwest",
+ "ring",
+ "rusqlite",
+ "rustls",
+ "rustls-platform-verifier",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-time",
+ "windows-native-keyring-store",
+ "zbus-secret-service-keyring-store",
+ "zeroize",
+]
+
+[[package]]
 name = "nddev-device-sync-adapter-io"
 version = "0.0.1-alpha.1"
 source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-agent?rev=341644980976a08825b194f147b7534321325785#341644980976a08825b194f147b7534321325785"
@@ -2080,13 +2124,13 @@ dependencies = [
 
 [[package]]
 name = "nddev-device-sync-clipboard"
-version = "0.0.1-alpha.3"
-source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-clipboard?rev=b6999d3842b3d9ecd7b7ce2efb5a205a4f5fb718#b6999d3842b3d9ecd7b7ce2efb5a205a4f5fb718"
+version = "0.0.1-alpha.4"
+source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-clipboard?rev=d435645e3fdaef1989980c3dbecf9968b94f952c#d435645e3fdaef1989980c3dbecf9968b94f952c"
 dependencies = [
  "arboard",
  "jni 0.21.1",
  "js-sys",
- "nddev-device-sync-accounts",
+ "nddev-device-sync-accounts 0.0.1-alpha.19",
  "nddev-device-sync-adapter-io 0.0.1-alpha.1",
  "serde",
  "serde_json",
@@ -2231,7 +2275,7 @@ dependencies = [
  "base64 0.22.1",
  "js-sys",
  "libc",
- "nddev-device-sync-accounts",
+ "nddev-device-sync-accounts 0.0.1-alpha.18",
  "nddev-device-sync-domain 0.0.8",
  "nddev-device-sync-telemetry 0.0.1-alpha.8",
  "ring",
@@ -2261,7 +2305,7 @@ checksum = "27b02d87554356db9e9a873add8782d4ea6e3e58ea071a9adb9a2e8ddb884a8b"
 name = "nds-agent"
 version = "0.0.1-alpha.4"
 dependencies = [
- "nddev-device-sync-accounts",
+ "nddev-device-sync-accounts 0.0.1-alpha.18",
  "nddev-device-sync-adapter-io 0.0.1-alpha.4",
  "nddev-device-sync-telemetry 0.0.1-alpha.8",
  "nddev-device-sync-vault",
