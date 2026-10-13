@@ -13,6 +13,7 @@ if sys.platform != "linux":
     raise SystemExit("This provider qualification requires Linux")
 root = Path(__file__).resolve().parent.parent
 provider = Path(os.environ["NDS_TEST_SYSINFO_DAEMON"]).resolve(strict=True)
+gds = Path(os.environ["NDS_TEST_GDS"]).resolve(strict=True)
 build = subprocess.run(
     ["cargo", "test", "--locked", "-p", "nddev-device-sync-agent", "--test", "lifecycle",
      "--no-run", "--message-format=json"],
@@ -26,6 +27,15 @@ with tempfile.TemporaryDirectory(prefix="nds-agent-provider-") as temporary:
     fixture = Path(temporary)
     fixture.chmod(0o700)
     environment = {**os.environ, "XDG_RUNTIME_DIR": temporary, "NDS_ISOLATED_PROVIDER": "1"}
+    repository = fixture / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "--quiet", "--initial-branch=main", str(repository)],
+                   check=True, timeout=10)
+    environment.update(
+        PATH=str(gds.parent) + os.pathsep + environment.get("PATH", ""),
+        GDS_ESTATE_ROOT=temporary,
+        NDS_AGENT_TEST_REPOSITORY=str(repository),
+    )
     for key in ["LISTEN_PID", "LISTEN_FDS", "LISTEN_FDNAMES"]:
         environment.pop(key, None)
     daemon = subprocess.Popen([str(provider)], env=environment, stdin=subprocess.DEVNULL,
@@ -40,6 +50,8 @@ with tempfile.TemporaryDirectory(prefix="nds-agent-provider-") as temporary:
                        env=environment, check=True, timeout=30)
         subprocess.run([executables[0], "--ignored", "cached_missing_provider_is_not_a_fresh_native_observation"],
                        env={**environment, "PATH": ""}, check=True, timeout=30)
+        subprocess.run([executables[0], "--ignored", "native_gds_query_uses_core_observation_and_projection"],
+                       env=environment, check=True, timeout=30)
         # Pause only this owned daemon to exercise a genuine stalled local I/O.
         daemon.send_signal(signal.SIGSTOP)
         deadline = time.monotonic() + 2
@@ -52,6 +64,8 @@ with tempfile.TemporaryDirectory(prefix="nds-agent-provider-") as temporary:
             time.sleep(0.02)
         subprocess.run([executables[0], "--ignored", "closing_an_in_flight_query_preserves_unobserved_state"],
                        env={**environment, "NDS_PAUSED_PROVIDER": "1"}, check=True, timeout=15)
+        subprocess.run([executables[0], "--ignored", "native_timeout_uses_core_failure_observation_and_error_span"],
+                       env={**environment, "NDS_PAUSED_PROVIDER": "1"}, check=True, timeout=15)
     finally:
         daemon.send_signal(signal.SIGCONT)
         daemon.terminate()
@@ -60,4 +74,4 @@ with tempfile.TemporaryDirectory(prefix="nds-agent-provider-") as temporary:
         except subprocess.TimeoutExpired:
             daemon.kill()
             daemon.wait(timeout=3)
-print("Assembled agent observation and shutdown acceptance passed")
+print("Assembled agent: real sysinfo/GDS queries, core observations, cancellation/timeout and OTLP outcomes passed")
