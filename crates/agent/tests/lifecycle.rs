@@ -1,4 +1,12 @@
 #![cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+use nddev_device_sync_domain::{DeviceId, state::Snapshot, sync::EntityKind};
+use nddev_device_sync_telemetry::{Config, ExportFeed, client_traces::ClientTraces};
+use opentelemetry_proto::tonic::{
+    collector::trace::v1::ExportTraceServiceRequest, common::v1::any_value,
+};
+use prost::Message;
+use tracing::instrument::WithSubscriber;
+
 use nddev_device_sync_agent::{
     NativeAgent,
     view::{AgentError, Reachability},
@@ -36,7 +44,8 @@ async fn closing_an_in_flight_query_preserves_unobserved_state() {
     use std::time::Duration;
     assert_eq!(std::env::var("NDS_PAUSED_PROVIDER").as_deref(), Ok("1"));
     let agent = NativeAgent::discover().unwrap();
-    let query = agent.system_info();
+    let (traces, feed, dispatch) = telemetry();
+    let query = agent.system_info().with_subscriber(dispatch);
     tokio::pin!(query);
     tokio::select! {
         _ = &mut query => panic!("paused native provider completed before cancellation"),
@@ -55,8 +64,10 @@ async fn closing_an_in_flight_query_preserves_unobserved_state() {
         .find(|module| module.id == "sysinfo")
         .unwrap();
     assert!(state.configured);
-    assert_eq!(state.reachability, Reachability::NotChecked);
+    assert!(state.reachability == Reachability::NotChecked);
     assert!(state.observed_at_ms.is_none() && state.error.is_none());
+    assert_query_span(&feed, "sysinfo", 0);
+    traces.shutdown();
 }
 
 #[tokio::test]
@@ -64,8 +75,9 @@ async fn closing_an_in_flight_query_preserves_unobserved_state() {
 async fn cached_missing_provider_is_not_a_fresh_native_observation() {
     assert_eq!(std::env::var("PATH").as_deref(), Ok(""));
     let agent = NativeAgent::discover().unwrap();
+    let (traces, feed, dispatch) = telemetry();
     assert!(matches!(
-        agent.remote_sessions().await,
+        agent.remote_sessions().with_subscriber(dispatch).await,
         Err(AgentError::Unavailable)
     ));
     let state = agent
@@ -74,8 +86,10 @@ async fn cached_missing_provider_is_not_a_fresh_native_observation() {
         .find(|module| module.id == "rds")
         .unwrap();
     assert!(!state.configured);
-    assert_eq!(state.reachability, Reachability::NotChecked);
+    assert!(state.reachability == Reachability::NotChecked);
     assert!(state.observed_at_ms.is_none() && state.error.is_none());
+    assert_query_span(&feed, "rds", 2);
+    traces.shutdown();
 }
 
 #[tokio::test]
@@ -83,13 +97,19 @@ async fn cached_missing_provider_is_not_a_fresh_native_observation() {
 async fn native_query_updates_only_its_own_observation() {
     assert_eq!(std::env::var("NDS_ISOLATED_PROVIDER").as_deref(), Ok("1"));
     let agent = NativeAgent::discover().unwrap();
-    agent.system_info().await.unwrap();
+    let (traces, feed, dispatch) = telemetry();
+    agent
+        .system_info()
+        .with_subscriber(dispatch.clone())
+        .await
+        .unwrap();
+    assert_query_span(&feed, "sysinfo", 0);
     for module in agent.modules() {
         if module.id == "sysinfo" {
-            assert_eq!(module.reachability, Reachability::Reachable);
+            assert!(module.reachability == Reachability::Reachable);
             assert!(module.observed_at_ms.is_some() && module.error.is_none());
         } else {
-            assert_eq!(module.reachability, Reachability::NotChecked);
+            assert!(module.reachability == Reachability::NotChecked);
         }
     }
     let observed = agent
@@ -100,7 +120,7 @@ async fn native_query_updates_only_its_own_observation() {
         .observed_at_ms;
     agent.close();
     assert!(matches!(
-        agent.system_info().await,
+        agent.system_info().with_subscriber(dispatch).await,
         Err(AgentError::Cancelled)
     ));
     let latest = agent
@@ -108,6 +128,126 @@ async fn native_query_updates_only_its_own_observation() {
         .into_iter()
         .find(|module| module.id == "sysinfo")
         .unwrap();
-    assert_eq!(latest.reachability, Reachability::Reachable);
+    assert!(latest.reachability == Reachability::Reachable);
     assert_eq!(latest.observed_at_ms, observed);
+    assert_query_span(&feed, "sysinfo", 0);
+    traces.shutdown();
+}
+
+fn telemetry() -> (ClientTraces, ExportFeed, tracing::Dispatch) {
+    let config = Config {
+        service: "nddev-device-sync-agent".into(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        repository: "NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-agent".into(),
+        commit: "unknown".into(),
+        channel: "alpha".into(),
+        standards: "unreleased".into(),
+        environment: "test".into(),
+        default_module: "agent".into(),
+        debug: None,
+        target_prefixes: vec![
+            "nddev_device_sync_agent".into(),
+            "nddev_device_sync_adapter_io".into(),
+            "nddev_device_sync_sysinfo".into(),
+        ],
+    };
+    let traces = ClientTraces::new(&config).unwrap();
+    let feed = traces.subscribe().unwrap();
+    let (subscriber, _) =
+        nddev_device_sync_telemetry::subscriber(config, std::io::sink(), traces.tracer()).unwrap();
+    (traces, feed, tracing::Dispatch::new(subscriber))
+}
+fn assert_query_span(feed: &ExportFeed, module: &str, status: i32) {
+    let batch = feed.take_batch().unwrap();
+    assert_eq!(batch.count(), 1);
+    let request = ExportTraceServiceRequest::decode(batch.bytes()).unwrap();
+    let span = &request.resource_spans[0].scope_spans[0].spans[0];
+    assert_eq!(span.name, "module.operation");
+    let result = span.status.as_ref().unwrap();
+    assert_eq!(result.code, status);
+    assert!(result.message.is_empty());
+    assert!(span.attributes.iter().any(|field| field.key == "module"
+        && field.value.as_ref().and_then(|v| v.value.as_ref())
+            == Some(&any_value::Value::StringValue(module.into()))));
+    batch.acknowledge();
+    assert_eq!(feed.health().pending, 0);
+    assert_eq!(feed.health().dropped, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/check-agent.py with its paused native provider"]
+async fn native_timeout_uses_core_failure_observation_and_error_span() {
+    assert_eq!(std::env::var("NDS_PAUSED_PROVIDER").as_deref(), Ok("1"));
+    let agent = NativeAgent::discover().unwrap();
+    let (traces, feed, dispatch) = telemetry();
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(8),
+        agent.system_info().with_subscriber(dispatch),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(result, Err(AgentError::Timeout)));
+    let state = agent
+        .modules()
+        .into_iter()
+        .find(|module| module.id == "sysinfo")
+        .unwrap();
+    assert!(state.configured && state.reachability == Reachability::Failed);
+    assert!(state.observed_at_ms.is_some() && state.error == Some(AgentError::Timeout));
+    assert_query_span(&feed, "sysinfo", 2);
+    traces.shutdown();
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/check-agent.py with the pinned real GDS provider and owned Git repository"]
+async fn native_gds_query_uses_core_observation_and_projection() {
+    let repository = std::path::PathBuf::from(std::env::var("NDS_AGENT_TEST_REPOSITORY").unwrap());
+    assert!(repository.is_absolute());
+    let agent = NativeAgent::discover().unwrap();
+    let (traces, feed, dispatch) = telemetry();
+    agent
+        .repository_status(&repository)
+        .with_subscriber(dispatch)
+        .await
+        .unwrap();
+    let state = agent
+        .modules()
+        .into_iter()
+        .find(|module| module.id == "gds")
+        .unwrap();
+    assert!(
+        state.configured && state.reachability == Reachability::Reachable && state.error.is_none()
+    );
+    let snapshot = Snapshot {
+        schema_version: 1,
+        observed_at_ms: state.observed_at_ms.unwrap(),
+        data: state.state(),
+    };
+    snapshot
+        .validate(
+            &DeviceId::new("fixture-device").unwrap(),
+            EntityKind::ModuleState,
+            "fixture-device:gds",
+        )
+        .unwrap();
+    assert_query_span(&feed, "gds", 0);
+    traces.shutdown();
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn windows_gds_is_unconfigured_and_refuses_queries() {
+    let agent = NativeAgent::discover().unwrap();
+    let state = agent
+        .modules()
+        .into_iter()
+        .find(|module| module.id == "gds")
+        .unwrap();
+    assert!(!state.configured && state.observed_at_ms.is_none());
+    assert!(matches!(
+        agent
+            .repository_status(std::path::Path::new("C:\\owned-test"))
+            .await,
+        Err(AgentError::UnsupportedPlatform)
+    ));
 }
