@@ -94,7 +94,7 @@ mod tests {
         let (root, host, digest) = fixture();
         assert_eq!(
             resolve(&host, &digest).unwrap(),
-            Some(root.path().join(WORKER_NAME))
+            Some(root.path().canonicalize().unwrap().join(WORKER_NAME))
         );
         std::fs::write(root.path().join(WORKER_NAME), b"replaced-worker").unwrap();
         assert!(matches!(
