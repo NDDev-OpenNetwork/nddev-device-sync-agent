@@ -10,3 +10,7 @@ license = "AGPL-3.0-only"
 authors = ["NDDev OpenNetwork"]
 homepage = "https://nddev.ai"
 repository = "https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-agent"
+
+# Provider libraries and the CLI share this workspace-owned I/O implementation.
+[patch."https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-agent"]
+nddev-device-sync-adapter-io = { path = "crates/io" }

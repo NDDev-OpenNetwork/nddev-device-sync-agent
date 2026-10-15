@@ -137,7 +137,7 @@ mod qualified {
         }
         staged_file.sync_all()?;
         drop(staged_file);
-        let digest = format!("{:x}", hash.finalize());
+        let digest = base16ct::lower::encode_string(&hash.finalize());
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
