@@ -19,11 +19,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Install pinned Rust
-        run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt,clippy
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint

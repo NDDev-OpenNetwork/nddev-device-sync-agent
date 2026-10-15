@@ -67,7 +67,7 @@ fn resolve(host: &Path, expected: &str) -> Result<Option<PathBuf>, AgentError> {
         }
         hash.update(&chunk[..bytes]);
     }
-    if count != metadata.len() || format!("{:x}", hash.finalize()) != expected {
+    if count != metadata.len() || base16ct::lower::encode_string(&hash.finalize()) != expected {
         return Err(AgentError::InvalidContract);
     }
     Ok(Some(worker))
@@ -87,7 +87,11 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(worker, std::fs::Permissions::from_mode(0o700)).unwrap();
         }
-        (root, host, format!("{:x}", Sha256::digest(b"owned-worker")))
+        (
+            root,
+            host,
+            base16ct::lower::encode_string(&Sha256::digest(b"owned-worker")),
+        )
     }
     #[test]
     fn only_the_fixed_verified_sibling_is_admitted() {
