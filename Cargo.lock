@@ -3039,8 +3039,8 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "nddev-device-sync-accounts"
-version = "0.0.1-alpha.23"
-source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-accounts?rev=dd5da10bb6aff46a111546508f1d9daebd6851c0#dd5da10bb6aff46a111546508f1d9daebd6851c0"
+version = "0.0.1-alpha.24"
+source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-accounts?rev=aa387beaf08ba53ec630d6fb64b6861f7075486b#aa387beaf08ba53ec630d6fb64b6861f7075486b"
 dependencies = [
  "android-native-keyring-store",
  "apple-native-keyring-store",
@@ -3073,6 +3073,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
+ "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-time",
@@ -3143,7 +3144,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-application"
 version = "0.0.1-alpha.21"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-core.git?rev=75250e0e7297c214e36d057987ef328ea5543a4b#75250e0e7297c214e36d057987ef328ea5543a4b"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-core.git?rev=19ceef8a233b68ace3b18ebeb852633ed26d208c#19ceef8a233b68ace3b18ebeb852633ed26d208c"
 dependencies = [
  "nddev-device-sync-domain",
 ]
@@ -3160,7 +3161,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-clipboard"
 version = "0.0.1-alpha.7"
-source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-clipboard?rev=4e6550736ed32ef3199db3f7aa69edeaec28712c#4e6550736ed32ef3199db3f7aa69edeaec28712c"
+source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-clipboard?rev=17b045191261ca08834ddd2d6913cc19976fe5de#17b045191261ca08834ddd2d6913cc19976fe5de"
 dependencies = [
  "arboard",
  "jni 0.21.1",
@@ -3179,7 +3180,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-domain"
 version = "0.0.12"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-core.git?rev=75250e0e7297c214e36d057987ef328ea5543a4b#75250e0e7297c214e36d057987ef328ea5543a4b"
+source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-core.git?rev=19ceef8a233b68ace3b18ebeb852633ed26d208c#19ceef8a233b68ace3b18ebeb852633ed26d208c"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -3190,7 +3191,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-gds"
 version = "0.0.1-alpha.6"
-source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-gds?rev=e43f0796aeff6b9db7e7c964f96913152693e759#e43f0796aeff6b9db7e7c964f96913152693e759"
+source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-gds?rev=3a69cce362ed2cc4d335039af71d3ff0c5060bce#3a69cce362ed2cc4d335039af71d3ff0c5060bce"
 dependencies = [
  "gix",
  "nddev-device-sync-adapter-io 0.0.1-alpha.1",
@@ -3214,8 +3215,8 @@ dependencies = [
 
 [[package]]
 name = "nddev-device-sync-rds"
-version = "0.0.1-alpha.1"
-source = "git+https://github.com/NDDev-OpenNetwork/nddev-device-sync-rds?rev=9f12f64578722f808935ee1ded1c0246a248945d#9f12f64578722f808935ee1ded1c0246a248945d"
+version = "0.0.1-alpha.2"
+source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-rds?rev=c0da17ad76f2af5f9626d065b5cba25c7e543231#c0da17ad76f2af5f9626d065b5cba25c7e543231"
 dependencies = [
  "nddev-device-sync-adapter-io 0.0.1-alpha.1",
  "serde",
@@ -3272,7 +3273,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-vault"
 version = "0.0.1-alpha.11"
-source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-vault?rev=6e63c9797891ca68c4e9d13d018d40d4269a7a85#6e63c9797891ca68c4e9d13d018d40d4269a7a85"
+source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-vault?rev=cb843cc15e1cb56a6c28823341ccfd0a0610e85b#cb843cc15e1cb56a6c28823341ccfd0a0610e85b"
 dependencies = [
  "base64 0.22.1",
  "js-sys",
