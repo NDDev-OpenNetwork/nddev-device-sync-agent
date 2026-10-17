@@ -3222,7 +3222,7 @@ dependencies = [
 [[package]]
 name = "nddev-device-sync-updater"
 version = "0.0.1-alpha.1"
-source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-updater?rev=e8865e7f18f2e703154cff105d6a3da28e3f9d80#e8865e7f18f2e703154cff105d6a3da28e3f9d80"
+source = "git+https://github.com/NDDev-Technocracy-OpenNetwork-NDS/nddev-device-sync-updater?rev=1fd65d33ed999a736cd0227e9616cf9600b529a9#1fd65d33ed999a736cd0227e9616cf9600b529a9"
 dependencies = [
  "nddev-device-sync-adapter-io",
  "serde",
